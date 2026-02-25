@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <style>
+        /* Modern CSS Reset & Typography */
+        body {
+            width: 340px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f3f4f6;
+            /* Tailwind gray-100 */
+            color: #1f2937;
+            /* Tailwind gray-800 */
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Header Bar */
+        .header {
+            background-color: #ffffff;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        }
+
+        .header h2 {
+            color: #651fff;
+            /* Passave Purple */
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+        }
+
+        /* Main Content Area */
+        .container {
+            padding: 20px;
+        }
+
+        /* Sleek Inputs */
+        input {
+            width: 100%;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+            box-sizing: border-box;
+            background-color: #ffffff;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #651fff;
+            box-shadow: 0 0 0 3px rgba(101, 31, 255, 0.15);
+        }
+
+        /* Premium Buttons */
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #651fff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.875rem;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        button:hover {
+            background-color: #5014cc;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button.danger {
+            background-color: #ef4444;
+            /* Tailwind red-500 */
+            width: auto;
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            border-radius: 6px;
+        }
+
+        button.danger:hover {
+            background-color: #dc2626;
+        }
+
+        /* Vault List & Card Styles */
+        #saves-list {
+            max-height: 320px;
+            overflow-y: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            background: white;
+            border: 1px solid #e5e7eb;
+        }
+
+        #saves-list::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #saves-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        #saves-list::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 10px;
+        }
+
+        .save-card {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background-color 0.2s;
+        }
+
+        .save-card:last-child {
+            border-bottom: none;
+        }
+
+        .save-card:hover {
+            background-color: #f9fafb;
+        }
+
+        .save-title {
+            color: #111827;
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .save-detail {
+            font-size: 0.75rem;
+            color: #6b7280;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+        }
+
+        /* Badges / Mini Buttons */
+        .badge-copy {
+            cursor: pointer;
+            background-color: #f3f4f6;
+            color: #374151;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 6px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+
+        .badge-copy:hover {
+            background-color: #e5e7eb;
+        }
+
+        .badge-autofill {
+            background-color: #10b981;
+            color: white;
+            border: none;
+            padding: 3px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin-left: auto;
+            transition: background-color 0.2s;
+        }
+
+        .badge-autofill:hover {
+            background-color: #059669;
+        }
+
+        /* Status Messages */
+        #message {
+            text-align: center;
+            margin-top: 12px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .error {
+            color: #ef4444;
+        }
+
+        .success {
+            color: #10b981;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #6b7280;
+            padding: 20px 0;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h2>Passave</h2>
+        <button id="logout-btn" class="danger" style="display: none;">Log Out</button>
+    </div>
+
+    <div id="login-section" class="container">
+        <form id="login-form">
+            <input type="email" id="email" placeholder="Email Address" required>
+            <input type="password" id="password" placeholder="Master Password" required>
+            <input type="text" id="secret_token" placeholder="6-digit Authenticator Code" required>
+            <button type="submit" id="login-btn">Log In</button>
+        </form>
+        <div id="message"></div>
+    </div>
+
+    <div id="vault-section" class="container" style="display: none;">
+        <input type="text" id="search-input" placeholder="🔍 Search passwords..."
+            style="margin-bottom: 15px; background-color: #f9fafb;">
+
+        <div id="saves-list">
+            <p class="empty-state">Loading vault...</p>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>

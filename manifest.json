@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Passave",
+  "version": "1.0.0",
+  "description": "Your secure password manager, right in your browser.",
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Open Passave Vault",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["http://localhost:5000/*", "<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ]
+}
