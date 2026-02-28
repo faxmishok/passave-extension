@@ -1,3 +1,7 @@
+// --- CONFIGURATION ---
+// Change this to 'https://passave.org' when you deploy!
+const BASE_URL = 'http://localhost:5000';
+
 document.addEventListener('DOMContentLoaded', function () {
   const loginSection = document.getElementById('login-section');
   const vaultSection = document.getElementById('vault-section');
@@ -22,12 +26,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const password = document.getElementById('password').value;
     const secret_token = document.getElementById('secret_token').value;
 
-    loginBtn.textContent = 'Logging in...';
+    loginBtn.textContent = 'Decrypting...';
     messageDiv.textContent = '';
     messageDiv.className = '';
 
     try {
-      const response = await fetch('http://localhost:5000/auth/ext-login', {
+      const response = await fetch(`${BASE_URL}/auth/ext-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, secret_token }),
@@ -40,43 +44,40 @@ document.addEventListener('DOMContentLoaded', function () {
           showVault(data.token);
         });
       } else {
-        messageDiv.textContent = data.message || 'Login failed.';
+        messageDiv.textContent = data.error || data.message || 'Login failed.';
         messageDiv.className = 'error';
-        loginBtn.textContent = 'Log In';
+        loginBtn.textContent = 'Unlock Vault';
       }
     } catch (error) {
-      messageDiv.textContent = 'Could not connect to server.';
+      console.error('Fetch error:', error);
+      messageDiv.textContent =
+        'Could not connect to server. Check your connection.';
       messageDiv.className = 'error';
-      loginBtn.textContent = 'Log In';
+      loginBtn.textContent = 'Unlock Vault';
     }
   });
 
   // 3. Handle Logout
   logoutBtn.addEventListener('click', function () {
     chrome.storage.local.remove(['token', 'vault'], function () {
-      // FIX: Hide the vault, show the login, AND hide the logout button
       vaultSection.style.display = 'none';
       loginSection.style.display = 'block';
       logoutBtn.style.display = 'none';
-
       loginForm.reset();
-      loginBtn.textContent = 'Log In';
+      loginBtn.textContent = 'Unlock Vault';
       messageDiv.textContent = '';
-
-      // NEW: Clear the search bar so the next login starts fresh
       searchInput.value = '';
     });
   });
 
   // 4. Show the Vault
   async function showVault(token) {
-    // FIX: Show the vault, hide the login, AND show the logout button
     loginSection.style.display = 'none';
     vaultSection.style.display = 'block';
     logoutBtn.style.display = 'block';
 
     try {
-      const response = await fetch('http://localhost:5000/profile/dashboard', {
+      const response = await fetch(`${BASE_URL}/profile/dashboard`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -91,7 +92,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
         let html = '';
         data.user.saves.forEach((save) => {
-          // 1. Fallback logic for Clearbit/missing URLs (just like the web dashboard!)
           let finalLogoUrl = save.logoURL;
           if (!finalLogoUrl || finalLogoUrl.includes('clearbit.com')) {
             try {
@@ -105,22 +105,19 @@ document.addEventListener('DOMContentLoaded', function () {
             }
           }
 
-          // 2. The HTML for the logo (or a key emoji if it fails)
           const logoHtml = finalLogoUrl
             ? `<img src="${finalLogoUrl}" style="width: 20px; height: 20px; object-fit: contain;" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';" />
                            <span style="display:none; color: #9ca3af; font-size: 14px;">🔑</span>`
             : `<span style="color: #9ca3af; font-size: 14px;">🔑</span>`;
 
-          // 3. The updated Card HTML with Flexbox
           html += `
                         <div class="save-card" style="display: flex; align-items: center;">
-                            <div style="width: 36px; height: 36px; margin-right: 12px; flex-shrink: 0; background-color: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                            <div style="width: 36px; height: 36px; margin-right: 12px; flex-shrink: 0; background-color: #111827; border: 1px solid #4b5563; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
                                 ${logoHtml}
                             </div>
-                            
                             <div style="flex-grow: 1;">
                                 <span class="save-title">${save.name}</span>
-                                <div class="save-detail" style="margin-bottom: 4px;">User: <strong style="margin-left: 4px; color: #1f2937;">${save.username}</strong></div>
+                                <div class="save-detail" style="margin-bottom: 4px;">User: <strong style="margin-left: 4px; color: #e5e7eb;">${save.username}</strong></div>
                                 <div class="save-detail" style="margin-bottom: 0;">Pass: 
                                     <span class="badge-copy copy-pass-btn" data-password="${save.password_secret}" title="Click to copy">••••••••</span>
                                     <button class="badge-autofill autofill-btn" data-username="${save.username}" data-password="${save.password_secret}">Autofill</button>
@@ -131,7 +128,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         if (data.user.saves.length === 0) {
-          html = '<p class="empty-state">No passwords saved yet.</p>';
+          html = '<p class="empty-state">No credentials found.</p>';
         }
 
         savesList.innerHTML = html;
@@ -143,10 +140,9 @@ document.addEventListener('DOMContentLoaded', function () {
             const passwordToCopy = this.getAttribute('data-password');
             navigator.clipboard.writeText(passwordToCopy).then(() => {
               const originalText = this.textContent;
-              this.textContent = 'Copied! ✅';
-              this.style.backgroundColor = '#dcfce3';
-              this.style.color = '#166534';
-
+              this.textContent = 'Copied!';
+              this.style.backgroundColor = '#10b981'; /* Teal */
+              this.style.color = '#111827';
               setTimeout(() => {
                 this.textContent = originalText;
                 this.style.backgroundColor = '';
@@ -162,10 +158,9 @@ document.addEventListener('DOMContentLoaded', function () {
           btn.addEventListener('click', async function () {
             const u = this.getAttribute('data-username');
             const p = this.getAttribute('data-password');
-
             const originalText = this.textContent;
-            this.textContent = 'Filling...';
 
+            this.textContent = 'Filling...';
             const [tab] = await chrome.tabs.query({
               active: true,
               currentWindow: true,
@@ -181,10 +176,10 @@ document.addEventListener('DOMContentLoaded', function () {
                     !response ||
                     !response.success
                   ) {
-                    btn.textContent = 'Failed ❌';
-                    btn.style.backgroundColor = '#ef4444';
+                    btn.textContent = 'Failed';
+                    btn.style.backgroundColor = '#ef4444'; /* Red */
                   } else {
-                    btn.textContent = 'Done! ✅';
+                    btn.textContent = 'Done!';
                   }
                   setTimeout(() => {
                     btn.textContent = originalText;
@@ -197,27 +192,23 @@ document.addEventListener('DOMContentLoaded', function () {
         });
       } else {
         savesList.innerHTML =
-          '<p class="error" style="text-align:center; padding: 20px;">Failed to load vault.</p>';
+          '<p class="error empty-state">Session expired. Please log out and back in.</p>';
       }
     } catch (error) {
       savesList.innerHTML =
-        '<p class="error" style="text-align:center; padding: 20px;">Could not connect to server.</p>';
+        '<p class="error empty-state">Could not connect to server.</p>';
     }
   }
 
-  // 5. NEW: The Real-Time Search Logic
+  // 5. Search Logic
   searchInput.addEventListener('input', function () {
     const searchTerm = this.value.toLowerCase();
     const allCards = savesList.querySelectorAll('.save-card');
-
     allCards.forEach((card) => {
-      // Grab the text from the title and username
       const titleText = card
         .querySelector('.save-title')
         .textContent.toLowerCase();
       const userText = card.querySelector('strong').textContent.toLowerCase();
-
-      // If the search term matches the name or username, show it using flex to preserve the layout!
       if (titleText.includes(searchTerm) || userText.includes(searchTerm)) {
         card.style.display = 'flex';
       } else {

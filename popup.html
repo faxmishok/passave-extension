@@ -4,14 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <style>
-        /* Modern CSS Reset & Typography */
+        /* Dark Fortress Reset & Typography */
         body {
-            width: 340px;
+            width: 360px;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f3f4f6;
-            /* Tailwind gray-100 */
-            color: #1f2937;
-            /* Tailwind gray-800 */
+            background-color: #111827;
+            /* gray-900 */
+            color: #e5e7eb;
+            /* gray-200 */
             margin: 0;
             padding: 0;
             box-sizing: border-box;
@@ -19,22 +19,28 @@
 
         /* Header Bar */
         .header {
-            background-color: #ffffff;
-            border-bottom: 1px solid #e5e7eb;
+            background-color: #1f2937;
+            /* gray-800 */
+            border-bottom: 1px solid #374151;
+            /* gray-700 */
             padding: 16px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
         }
 
         .header h2 {
-            color: #651fff;
-            /* Passave Purple */
+            color: #ffffff;
             margin: 0;
             font-size: 1.25rem;
-            font-weight: 700;
+            font-weight: 800;
             letter-spacing: -0.025em;
+            text-transform: uppercase;
+        }
+
+        .header h2 span {
+            color: #9333ea;
+            /* Purple dot */
         }
 
         /* Main Content Area */
@@ -42,41 +48,49 @@
             padding: 20px;
         }
 
-        /* Sleek Inputs */
+        /* Sleek Dark Inputs */
         input {
             width: 100%;
             padding: 12px 16px;
             margin-bottom: 12px;
-            border: 1px solid #d1d5db;
+            background-color: #1f2937;
+            border: 1px solid #374151;
+            color: #ffffff;
             border-radius: 8px;
             font-size: 0.875rem;
             transition: all 0.2s;
             box-sizing: border-box;
-            background-color: #ffffff;
+        }
+
+        input::placeholder {
+            color: #6b7280;
         }
 
         input:focus {
             outline: none;
-            border-color: #651fff;
-            box-shadow: 0 0 0 3px rgba(101, 31, 255, 0.15);
+            border-color: #9333ea;
+            /* Purple */
+            box-shadow: 0 0 0 2px rgba(147, 51, 234, 0.2);
         }
 
         /* Premium Buttons */
         button {
             width: 100%;
             padding: 12px;
-            background-color: #651fff;
+            background-color: #9333ea;
+            /* Purple */
             color: white;
             border: none;
             border-radius: 8px;
             cursor: pointer;
             font-weight: 600;
             font-size: 0.875rem;
+            letter-spacing: 0.025em;
             transition: background-color 0.2s, transform 0.1s;
         }
 
         button:hover {
-            background-color: #5014cc;
+            background-color: #7e22ce;
         }
 
         button:active {
@@ -84,8 +98,9 @@
         }
 
         button.danger {
-            background-color: #ef4444;
-            /* Tailwind red-500 */
+            background-color: transparent;
+            color: #9ca3af;
+            border: 1px solid #4b5563;
             width: auto;
             padding: 6px 12px;
             font-size: 0.75rem;
@@ -93,7 +108,8 @@
         }
 
         button.danger:hover {
-            background-color: #dc2626;
+            background-color: #374151;
+            color: #ffffff;
         }
 
         /* Vault List & Card Styles */
@@ -101,9 +117,8 @@
             max-height: 320px;
             overflow-y: auto;
             border-radius: 8px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            background: white;
-            border: 1px solid #e5e7eb;
+            background: #1f2937;
+            border: 1px solid #374151;
         }
 
         #saves-list::-webkit-scrollbar {
@@ -115,13 +130,13 @@
         }
 
         #saves-list::-webkit-scrollbar-thumb {
-            background-color: #cbd5e1;
+            background-color: #4b5563;
             border-radius: 10px;
         }
 
         .save-card {
             padding: 12px 16px;
-            border-bottom: 1px solid #f3f4f6;
+            border-bottom: 1px solid #374151;
             transition: background-color 0.2s;
         }
 
@@ -130,11 +145,11 @@
         }
 
         .save-card:hover {
-            background-color: #f9fafb;
+            background-color: #374151;
         }
 
         .save-title {
-            color: #111827;
+            color: #ffffff;
             font-weight: 600;
             font-size: 0.875rem;
             margin-bottom: 4px;
@@ -143,7 +158,7 @@
 
         .save-detail {
             font-size: 0.75rem;
-            color: #6b7280;
+            color: #9ca3af;
             margin-bottom: 6px;
             display: flex;
             align-items: center;
@@ -152,8 +167,8 @@
         /* Badges / Mini Buttons */
         .badge-copy {
             cursor: pointer;
-            background-color: #f3f4f6;
-            color: #374151;
+            background-color: #374151;
+            color: #d1d5db;
             padding: 2px 6px;
             border-radius: 4px;
             margin-left: 6px;
@@ -162,24 +177,27 @@
         }
 
         .badge-copy:hover {
-            background-color: #e5e7eb;
+            background-color: #4b5563;
+            color: white;
         }
 
         .badge-autofill {
-            background-color: #10b981;
-            color: white;
+            background-color: #2dd4bf;
+            /* Teal */
+            color: #111827;
+            /* Dark text on teal */
             border: none;
-            padding: 3px 8px;
+            padding: 4px 10px;
             border-radius: 4px;
             cursor: pointer;
             font-size: 0.7rem;
-            font-weight: 600;
+            font-weight: 700;
             margin-left: auto;
             transition: background-color 0.2s;
         }
 
         .badge-autofill:hover {
-            background-color: #059669;
+            background-color: #14b8a6;
         }
 
         /* Status Messages */
@@ -191,11 +209,11 @@
         }
 
         .error {
-            color: #ef4444;
+            color: #f87171;
         }
 
         .success {
-            color: #10b981;
+            color: #34d399;
         }
 
         .empty-state {
@@ -209,7 +227,7 @@
 
 <body>
     <div class="header">
-        <h2>Passave</h2>
+        <h2>Passave<span>.</span></h2>
         <button id="logout-btn" class="danger" style="display: none;">Log Out</button>
     </div>
 
@@ -217,16 +235,14 @@
         <form id="login-form">
             <input type="email" id="email" placeholder="Email Address" required>
             <input type="password" id="password" placeholder="Master Password" required>
-            <input type="text" id="secret_token" placeholder="6-digit Authenticator Code" required>
-            <button type="submit" id="login-btn">Log In</button>
+            <input type="text" id="secret_token" placeholder="2FA / Secret Key" required>
+            <button type="submit" id="login-btn">Unlock Vault</button>
         </form>
         <div id="message"></div>
     </div>
 
     <div id="vault-section" class="container" style="display: none;">
-        <input type="text" id="search-input" placeholder="🔍 Search passwords..."
-            style="margin-bottom: 15px; background-color: #f9fafb;">
-
+        <input type="text" id="search-input" placeholder="🔍 Search vault..." style="margin-bottom: 15px;">
         <div id="saves-list">
             <p class="empty-state">Loading vault...</p>
         </div>

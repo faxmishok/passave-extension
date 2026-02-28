@@ -70,13 +70,13 @@ function showSuggestionBox(inputElement, matches) {
   const box = document.createElement('div');
   box.id = 'passave-inline-box';
 
-  // Premium Tailwind-esque inline styles
+  // Premium Dark Mode inline styles
   box.style.position = 'absolute';
-  box.style.backgroundColor = '#ffffff';
-  box.style.border = '1px solid #e5e7eb';
+  box.style.backgroundColor = '#1f2937'; // gray-800
+  box.style.border = '1px solid #374151'; // gray-700
   box.style.borderRadius = '8px';
   box.style.boxShadow =
-    '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)';
+    '0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3)';
   box.style.zIndex = '2147483647';
   box.style.padding = '4px 0';
   box.style.minWidth = '220px';
@@ -92,18 +92,18 @@ function showSuggestionBox(inputElement, matches) {
     const item = document.createElement('div');
     item.style.padding = '10px 16px';
     item.style.cursor = 'pointer';
-    item.style.borderBottom = '1px solid #f3f4f6';
+    item.style.borderBottom = '1px solid #374151';
     item.style.display = 'flex';
     item.style.flexDirection = 'column';
     item.style.transition = 'background-color 0.15s ease';
 
-    item.onmouseover = () => (item.style.backgroundColor = '#f9fafb');
-    item.onmouseout = () => (item.style.backgroundColor = '#ffffff');
+    item.onmouseover = () => (item.style.backgroundColor = '#374151');
+    item.onmouseout = () => (item.style.backgroundColor = '#1f2937');
 
-    // Injecting the Passave Purple and clean text sizing
+    // Dark theme text
     item.innerHTML = `
-            <strong style="color: #651fff; font-size: 14px; font-weight: 600; margin-bottom: 2px;">Passave Suggestion</strong>
-            <span style="color: #4b5563; font-size: 13px;">${save.username}</span>
+            <strong style="color: #2dd4bf; font-size: 14px; font-weight: 600; margin-bottom: 2px;">Passave Vault</strong>
+            <span style="color: #d1d5db; font-size: 13px;">${save.username}</span>
         `;
 
     item.addEventListener('mousedown', function (e) {
@@ -129,7 +129,6 @@ function showSuggestionBox(inputElement, matches) {
     box.appendChild(item);
   });
 
-  // Remove the bottom border from the very last item
   if (box.lastChild) box.lastChild.style.borderBottom = 'none';
 
   document.body.appendChild(box);
