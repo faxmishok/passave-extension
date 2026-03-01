@@ -1,8 +1,23 @@
-// --- CONFIGURATION ---
-// Change this to 'https://passave.org' when you deploy!
-const BASE_URL = 'http://localhost:5000';
+const BASE_URL = 'https://passave.org';
 
 document.addEventListener('DOMContentLoaded', function () {
+  const themeToggle = document.getElementById('theme-toggle');
+  const themeIcon = document.getElementById('theme-icon');
+
+  // --- THEME ENGINE ---
+  chrome.storage.local.get(['theme'], (result) => {
+    if (result.theme === 'light') {
+      document.body.classList.add('light-mode');
+      themeIcon.textContent = '☀️';
+    }
+  });
+
+  themeToggle.addEventListener('click', () => {
+    const isLight = document.body.classList.toggle('light-mode');
+    themeIcon.textContent = isLight ? '☀️' : '🌙';
+    chrome.storage.local.set({ theme: isLight ? 'light' : 'dark' });
+  });
+
   const loginSection = document.getElementById('login-section');
   const vaultSection = document.getElementById('vault-section');
   const loginForm = document.getElementById('login-form');
@@ -111,20 +126,20 @@ document.addEventListener('DOMContentLoaded', function () {
             : `<span style="color: #9ca3af; font-size: 14px;">🔑</span>`;
 
           html += `
-                        <div class="save-card" style="display: flex; align-items: center;">
-                            <div style="width: 36px; height: 36px; margin-right: 12px; flex-shrink: 0; background-color: #111827; border: 1px solid #4b5563; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                                ${logoHtml}
-                            </div>
-                            <div style="flex-grow: 1;">
-                                <span class="save-title">${save.name}</span>
-                                <div class="save-detail" style="margin-bottom: 4px;">User: <strong style="margin-left: 4px; color: #e5e7eb;">${save.username}</strong></div>
-                                <div class="save-detail" style="margin-bottom: 0;">Pass: 
-                                    <span class="badge-copy copy-pass-btn" data-password="${save.password_secret}" title="Click to copy">••••••••</span>
-                                    <button class="badge-autofill autofill-btn" data-username="${save.username}" data-password="${save.password_secret}">Autofill</button>
-                                </div>
-                            </div>
-                        </div>
-                    `;
+              <div class="save-card" style="display: flex; align-items: center;">
+                  <div style="width: 36px; height: 36px; margin-right: 12px; flex-shrink: 0; background-color: var(--bg-main); border: 1px solid var(--border); border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                      ${logoHtml}
+                  </div>
+                  <div style="flex-grow: 1;">
+                      <span class="save-title">${save.name}</span>
+                      <div class="save-detail" style="margin-bottom: 4px;">User: <strong style="margin-left: 4px; color: var(--text-header);">${save.username}</strong></div>
+                      <div class="save-detail" style="margin-bottom: 0;">Pass: 
+                          <span class="badge-copy copy-pass-btn" data-password="${save.password_secret}" title="Click to copy">••••••••</span>
+                          <button class="badge-autofill autofill-btn" data-username="${save.username}" data-password="${save.password_secret}">Autofill</button>
+                      </div>
+                  </div>
+              </div>
+          `;
         });
 
         if (data.user.saves.length === 0) {

@@ -39,7 +39,8 @@ document.addEventListener('focusin', function (e) {
       target.type === 'email' ||
       target.type === 'text')
   ) {
-    chrome.storage.local.get(['vault'], function (result) {
+    // Fetch both the vault AND the theme from storage
+    chrome.storage.local.get(['vault', 'theme'], function (result) {
       if (!result.vault || result.vault.length === 0) return;
 
       const currentDomain = window.location.hostname.replace(/^www\./, '');
@@ -56,13 +57,13 @@ document.addEventListener('focusin', function (e) {
       });
 
       if (matches.length > 0) {
-        showSuggestionBox(target, matches);
+        showSuggestionBox(target, matches, result.theme);
       }
     });
   }
 });
 
-function showSuggestionBox(inputElement, matches) {
+function showSuggestionBox(inputElement, matches, currentTheme) {
   if (document.getElementById('passave-inline-box')) {
     document.getElementById('passave-inline-box').remove();
   }
@@ -70,13 +71,22 @@ function showSuggestionBox(inputElement, matches) {
   const box = document.createElement('div');
   box.id = 'passave-inline-box';
 
-  // Premium Dark Mode inline styles
+  // Determine colors based on the theme from storage
+  const isLight = currentTheme === 'light';
+  const bgColor = isLight ? '#ffffff' : '#1f2937';
+  const borderColor = isLight ? '#d1d5db' : '#374151';
+  const hoverColor = isLight ? '#f3f4f6' : '#374151';
+  const textColor = isLight ? '#4b5563' : '#d1d5db';
+  const titleColor = isLight ? '#0d9488' : '#2dd4bf'; // Teal
+
+  // Theme-aware inline styles
   box.style.position = 'absolute';
-  box.style.backgroundColor = '#1f2937'; // gray-800
-  box.style.border = '1px solid #374151'; // gray-700
+  box.style.backgroundColor = bgColor;
+  box.style.border = `1px solid ${borderColor}`;
   box.style.borderRadius = '8px';
-  box.style.boxShadow =
-    '0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3)';
+  box.style.boxShadow = isLight
+    ? '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
+    : '0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3)';
   box.style.zIndex = '2147483647';
   box.style.padding = '4px 0';
   box.style.minWidth = '220px';
@@ -92,19 +102,20 @@ function showSuggestionBox(inputElement, matches) {
     const item = document.createElement('div');
     item.style.padding = '10px 16px';
     item.style.cursor = 'pointer';
-    item.style.borderBottom = '1px solid #374151';
+    item.style.borderBottom = `1px solid ${borderColor}`;
     item.style.display = 'flex';
     item.style.flexDirection = 'column';
     item.style.transition = 'background-color 0.15s ease';
 
-    item.onmouseover = () => (item.style.backgroundColor = '#374151');
-    item.onmouseout = () => (item.style.backgroundColor = '#1f2937');
+    // Hover effects based on theme
+    item.onmouseover = () => (item.style.backgroundColor = hoverColor);
+    item.onmouseout = () => (item.style.backgroundColor = bgColor);
 
-    // Dark theme text
+    // Theme-aware text
     item.innerHTML = `
-            <strong style="color: #2dd4bf; font-size: 14px; font-weight: 600; margin-bottom: 2px;">Passave Vault</strong>
-            <span style="color: #d1d5db; font-size: 13px;">${save.username}</span>
-        `;
+      <strong style="color: ${titleColor}; font-size: 14px; font-weight: 600; margin-bottom: 2px;">Passave Vault</strong>
+      <span style="color: ${textColor}; font-size: 13px;">${save.username}</span>
+    `;
 
     item.addEventListener('mousedown', function (e) {
       e.preventDefault();

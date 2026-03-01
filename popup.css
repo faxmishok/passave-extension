@@ -1,0 +1,261 @@
+/* --- THEME VARIABLES --- */
+:root {
+  /* DARK MODE (Default - Your original colors) */
+  --bg-main: #111827; /* gray-900 */
+  --bg-header: #1f2937; /* gray-800 */
+  --bg-element: #1f2937; /* Inputs, Cards, Lists */
+  --bg-hover: #374151; /* gray-700 */
+  --border: #374151;
+  --text-main: #e5e7eb; /* gray-200 */
+  --text-header: #ffffff;
+  --text-muted: #9ca3af;
+  --text-input: #ffffff;
+  --accent: #9333ea; /* Purple */
+  --accent-hover: #7e22ce;
+  --danger-border: #4b5563;
+  --danger-hover: #374151;
+  --danger-text: #9ca3af;
+}
+
+body.light-mode {
+  /* LIGHT MODE */
+  --bg-main: #f3f4f6; /* gray-100 */
+  --bg-header: #ffffff;
+  --bg-element: #ffffff;
+  --bg-hover: #f9fafb; /* gray-50 */
+  --border: #d1d5db; /* gray-300 */
+  --text-main: #1f2937; /* gray-800 */
+  --text-header: #111827; /* gray-900 */
+  --text-muted: #6b7280; /* gray-500 */
+  --text-input: #111827;
+  --accent: #7c3aed; /* Violet */
+  --accent-hover: #6d28d9;
+  --danger-border: #d1d5db;
+  --danger-hover: #fee2e2; /* light red */
+  --danger-text: #ef4444; /* red */
+}
+
+/* Dark Fortress Reset & Typography */
+body {
+  width: 360px;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+
+/* Header Bar */
+.header {
+  background-color: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s;
+}
+
+.header h2 {
+  color: var(--text-header);
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  text-transform: uppercase;
+}
+
+.header h2 span {
+  color: var(--accent);
+}
+
+/* Main Content Area */
+.container {
+  padding: 20px;
+}
+
+/* Sleek Inputs */
+input {
+  width: 100%;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background-color: var(--bg-element);
+  border: 1px solid var(--border);
+  color: var(--text-input);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+input::placeholder {
+  color: var(--text-muted);
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(147, 51, 234, 0.2);
+}
+
+/* Premium Buttons */
+button {
+  width: 100%;
+  padding: 12px;
+  background-color: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.875rem;
+  letter-spacing: 0.025em;
+  transition:
+    background-color 0.2s,
+    transform 0.1s;
+}
+
+button:hover {
+  background-color: var(--accent-hover);
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button.danger {
+  background-color: transparent;
+  color: var(--danger-text);
+  border: 1px solid var(--danger-border);
+  width: auto;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  border-radius: 6px;
+}
+
+button.danger:hover {
+  background-color: var(--danger-hover);
+  color: var(--text-header);
+}
+
+/* Vault List & Card Styles */
+#saves-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border-radius: 8px;
+  background: var(--bg-element);
+  border: 1px solid var(--border);
+  transition:
+    background-color 0.2s,
+    border-color 0.2s;
+}
+
+#saves-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+#saves-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#saves-list::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 10px;
+}
+
+.save-card {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 0.2s;
+}
+
+.save-card:last-child {
+  border-bottom: none;
+}
+
+.save-card:hover {
+  background-color: var(--bg-hover);
+}
+
+.save-title {
+  color: var(--text-header);
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.save-detail {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+}
+
+/* Badges / Mini Buttons */
+.badge-copy {
+  cursor: pointer;
+  background-color: var(--border);
+  color: var(--text-main);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.badge-copy:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-header);
+}
+
+.badge-autofill {
+  background-color: #2dd4bf;
+  color: #111827;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-left: auto; /* Pushes it all the way to the right */
+  width: auto; /* OVERRIDES the global 100% button width */
+  flex-shrink: 0; /* Prevents the button from getting squished */
+  transition: background-color 0.2s;
+}
+
+.badge-autofill:hover {
+  background-color: #14b8a6;
+}
+
+/* Status Messages */
+#message {
+  text-align: center;
+  margin-top: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.error {
+  color: #f87171;
+}
+
+.success {
+  color: #34d399;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 20px 0;
+  font-size: 0.875rem;
+}
