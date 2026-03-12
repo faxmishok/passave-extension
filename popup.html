@@ -3,37 +3,201 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Passave</title>
     <link rel="stylesheet" href="popup.css">
 </head>
 
 <body>
-    <div class="header">
-        <h2>Passave<span>.</span></h2>
-        <div style="display: flex; align-items: center; gap: 8px;">
-            <button id="theme-toggle" class="danger"
-                style="padding: 4px 8px; border-radius: 50%; width: 32px; height: 32px;">
-                <span id="theme-icon">🌙</span>
+
+    <!-- LOGIN SCREEN -->
+    <div id="screen-login" class="screen active">
+        <div class="login-bg">
+            <div class="login-orb orb1"></div>
+            <div class="login-orb orb2"></div>
+        </div>
+        <div class="login-content">
+            <div class="brand">
+                <div class="brand-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                </div>
+                <span class="brand-name">Passave</span>
+            </div>
+            <h1 class="login-title">Unlock your<br>vault.</h1>
+            <p class="login-sub">Zero-knowledge. Always encrypted.</p>
+
+            <form id="login-form" class="login-form" autocomplete="off">
+                <div class="field-group">
+                    <div class="field">
+                        <label class="field-label">Email</label>
+                        <input type="email" id="login-email" class="field-input" placeholder="you@example.com" required
+                            autocomplete="off">
+                    </div>
+                    <div class="field">
+                        <label class="field-label">Master Password</label>
+                        <div class="field-input-wrap">
+                            <input type="password" id="login-password" class="field-input" placeholder="••••••••••••"
+                                required autocomplete="new-password">
+                            <button type="button" class="reveal-btn" id="reveal-password">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="field-label">2FA Code</label>
+                        <input type="text" id="login-otp" class="field-input otp-input" placeholder="6-digit code"
+                            maxlength="6" inputmode="numeric" required autocomplete="off">
+                    </div>
+                </div>
+
+                <div id="login-error" class="error-msg" style="display:none"></div>
+
+                <button type="submit" id="login-btn" class="btn-primary">
+                    <span class="btn-text">Unlock Vault</span>
+                    <span class="btn-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14M12 5l7 7-7 7" />
+                        </svg>
+                    </span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- VAULT SCREEN -->
+    <div id="screen-vault" class="screen">
+        <!-- Header -->
+        <div class="vault-header">
+            <div class="vault-header-left">
+                <div class="brand-icon small">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                </div>
+                <span class="vault-brand">Passave</span>
+            </div>
+            <div class="vault-header-right">
+                <button id="autofill-page-btn" class="icon-btn" title="Autofill current page">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                </button>
+                <button id="logout-btn" class="icon-btn" title="Sign out">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+                        <polyline points="16 17 21 12 16 7" />
+                        <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- User greeting + stats -->
+        <div class="vault-hero">
+            <div class="vault-greeting">
+                <span class="greeting-text">Good <span id="greeting-time">day</span>,</span>
+                <span class="greeting-name" id="user-greeting">Vault</span>
+            </div>
+            <div class="vault-stat-pill">
+                <span id="vault-count">0</span> credentials
+            </div>
+        </div>
+
+        <!-- Search -->
+        <div class="search-wrap">
+            <div class="search-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="M21 21l-4.35-4.35" />
+                </svg>
+            </div>
+            <input type="text" id="search-input" class="search-input" placeholder="Search credentials…">
+            <div id="search-clear" class="search-clear" style="display:none">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+            </div>
+        </div>
+
+        <!-- Saves list -->
+        <div id="saves-list" class="saves-list">
+            <div class="loading-state">
+                <div class="loading-dots"><span></span><span></span><span></span></div>
+                <p>Decrypting vault…</p>
+            </div>
+        </div>
+
+        <!-- Page match banner -->
+        <div id="page-match-banner" class="page-match-banner" style="display:none">
+            <div class="page-match-inner">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8v4M12 16h.01" />
+                </svg>
+                <span id="page-match-text">Match found for this page</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- CREDENTIAL DETAIL PANEL (slide-in) -->
+    <div id="panel-detail" class="detail-panel">
+        <div class="detail-header">
+            <button id="detail-back" class="back-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M19 12H5M12 5l-7 7 7 7" />
+                </svg>
             </button>
-            <button id="logout-btn" class="danger" style="display: none;">Log Out</button>
+            <span class="detail-title">Credential</span>
+            <div class="detail-logo-wrap">
+                <img id="detail-logo" class="detail-logo" src="" alt="" style="display:none">
+                <div id="detail-logo-fallback" class="detail-logo-fallback"></div>
+            </div>
+        </div>
+
+        <div class="detail-body">
+            <div class="detail-name-row">
+                <h2 id="detail-name" class="detail-name"></h2>
+                <span id="detail-category" class="detail-tag"></span>
+            </div>
+
+            <div id="detail-fields" class="detail-fields"></div>
+
+            <div class="detail-actions">
+                <button id="detail-autofill" class="btn-primary full">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                    Autofill on Page
+                </button>
+                <a id="detail-open-url" href="#" target="_blank" class="btn-secondary full" style="display:none">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                        <polyline points="15 3 21 3 21 9" />
+                        <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                    Open Site
+                </a>
+            </div>
         </div>
     </div>
 
-    <div id="login-section" class="container">
-        <form id="login-form">
-            <input type="email" id="email" placeholder="Email Address" required>
-            <input type="password" id="password" placeholder="Master Password" required>
-            <input type="text" id="secret_token" placeholder="2FA / Secret Key" required>
-            <button type="submit" id="login-btn">Unlock Vault</button>
-        </form>
-        <div id="message"></div>
-    </div>
-
-    <div id="vault-section" class="container" style="display: none;">
-        <input type="text" id="search-input" placeholder="🔍 Search vault..." style="margin-bottom: 15px;">
-        <div id="saves-list">
-            <p class="empty-state">Loading vault...</p>
-        </div>
-    </div>
+    <!-- TOAST -->
+    <div id="toast" class="toast" style="display:none"></div>
 
     <script src="popup.js"></script>
 </body>

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Passave",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Your zero-knowledge password vault, right in your browser.",
   "icons": {
     "16": "icons/icon16.png",
@@ -17,12 +17,20 @@
       "128": "icons/icon128.png"
     }
   },
-  "permissions": ["storage", "activeTab"],
-  "host_permissions": ["https://passave.org/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "host_permissions": [
+    "https://passave.org/*",
+    "http://localhost:5000/*",
+    "<all_urls>"
+  ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "run_at": "document_idle"
     }
   ]
 }
