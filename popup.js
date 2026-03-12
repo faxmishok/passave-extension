@@ -3,7 +3,7 @@
  * Smart-fill enabled.
  */
 
-const API = 'http://localhost:5000/api/v1';
+const API = 'https://passave.org/api/v1';
 
 // ─── DOM refs ───────────────────────────────────────────────
 const screenLogin = document.getElementById('screen-login');

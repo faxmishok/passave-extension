@@ -3,7 +3,7 @@
  * The invisible service worker. Securely fetches credentials for the current page.
  */
 
-const API = 'http://localhost:5000/api/v1'; // Change to https://passave.org/api/v1 for production
+const API = 'https://passave.org/api/v1';
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'CHECK_MATCHES') {
