@@ -22,13 +22,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           },
         });
 
+        // 🛡️ FIX: Catch 401/403 and clear storage, returning a specific error
+        if (res.status === 401 || res.status === 403) {
+          chrome.storage.local.remove('token');
+          return sendResponse({
+            success: false,
+            error: 'unauthorized',
+            matches: [],
+          });
+        }
+
         if (!res.ok) {
           return sendResponse({ success: false, matches: [] });
         }
 
         const data = await res.json();
         const saves = data.saves || [];
-        const currentDomain = request.domain.replace('www.', '');
+
+        // 🛡️ FIX: Use Regex to only replace a leading 'www.' (case-insensitive)
+        const currentDomain = request.domain.replace(/^www\./i, '');
 
         // 3. Find matches for the exact website the user is on
         const matches = saves.filter((s) => {
@@ -38,7 +50,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               s.loginURL.startsWith('http')
                 ? s.loginURL
                 : 'https://' + s.loginURL,
-            ).hostname.replace('www.', '');
+            ).hostname.replace(/^www\./i, ''); // 🛡️ FIX: Applied regex here too
             return saveDomain === currentDomain;
           } catch {
             return false;
