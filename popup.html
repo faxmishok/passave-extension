@@ -30,6 +30,12 @@
             <h1 class="login-title">Unlock your<br>vault.</h1>
             <p class="login-sub">Zero-knowledge. Always encrypted.</p>
 
+            <div class="register-prompt">
+                <span class="register-text">New to Passave?</span>
+                <a href="https://passave.org/sign-up" target="_blank" rel="noopener noreferrer"
+                    class="register-link">Create a Vault</a>
+            </div>
+
             <form id="login-form" class="login-form" autocomplete="off">
                 <div class="field-group">
                     <div class="field">
@@ -58,6 +64,15 @@
                     </div>
                 </div>
 
+                <div class="consent-wrap">
+                    <input type="checkbox" id="login-consent" required>
+                    <label for="login-consent">
+                        I agree to the <a href="https://passave.org/privacy" target="_blank"
+                            rel="noopener noreferrer">Privacy Policy</a> and consent to my credentials being securely
+                        transmitted to Passave servers.
+                    </label>
+                </div>
+
                 <div id="login-error" class="error-msg" style="display:none"></div>
 
                 <button type="submit" id="login-btn" class="btn-primary">
@@ -69,13 +84,6 @@
                         </svg>
                     </span>
                 </button>
-
-                <div class="register-prompt">
-                    <span class="register-text">New to Passave?</span>
-                    <a href="https://passave.org/sign-up" target="_blank" rel="noopener noreferrer"
-                        class="register-link">Create a Vault</a>
-                </div>
-
             </form>
         </div>
     </div>
