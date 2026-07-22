@@ -7,66 +7,141 @@ importScripts('lib/capture-core.js');
 
 const API = 'https://passave.org/api/v1';
 
+// ─── In-memory pending captures (never persisted; holds plaintext pw) ──
+const pendingCaptures = new Map(); // tabId -> pending
+
+const PENDING_TTL_MS = 5 * 60 * 1000;
+
+function storageGet(keys) {
+  return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
+}
+
+function getToken() {
+  return storageGet(['token']).then((r) => r.token || null);
+}
+
+// Fetch the vault and return saves whose domain matches `domain`.
+async function fetchDomainMatches(token, domain) {
+  const res = await fetch(`${API}/save/all`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+  });
+  if (res.status === 401 || res.status === 403) {
+    chrome.storage.local.remove('token');
+    const err = new Error('unauthorized');
+    err.code = 'unauthorized';
+    throw err;
+  }
+  if (!res.ok) return [];
+  const data = await res.json();
+  const saves = data.saves || [];
+  const currentDomain = domain.replace(/^www\./i, '');
+  return saves.filter((s) => {
+    if (!s.loginURL) return false;
+    try {
+      const saveDomain = new URL(
+        s.loginURL.startsWith('http') ? s.loginURL : 'https://' + s.loginURL,
+      ).hostname.replace(/^www\./i, '');
+      return saveDomain === currentDomain;
+    } catch {
+      return false;
+    }
+  });
+}
+
+// Password-free projection of a pending capture for the content script.
+function toPendingView(pending) {
+  if (!pending) return null;
+  return {
+    nonce: pending.nonce,
+    action: pending.action,
+    saveId: pending.saveId,
+    scenario: pending.scenario,
+    name: pending.name,
+    username: pending.identifiers.username,
+    email: pending.identifiers.email,
+    domain: pending.domain,
+  };
+}
+
+function isFresh(pending) {
+  return pending && Date.now() - pending.createdAt < PENDING_TTL_MS;
+}
+
+// ─── Capture intake ───────────────────────────────────────────
+async function handleCaptureSubmit(request, tabId) {
+  if (tabId == null) return;
+  const token = await getToken();
+  if (!token) return; // can't save without a logged-in vault
+
+  let matches = [];
+  try {
+    matches = await fetchDomainMatches(token, request.domain);
+  } catch {
+    return; // unauthorized or network error → skip prompting
+  }
+
+  const { ignoredSites = [] } = await storageGet(['ignoredSites']);
+  const decision = PassaveCaptureCore.resolveCaptureAction({
+    domain: request.domain,
+    identifiers: request.identifiers,
+    password: request.password,
+    matches,
+    ignoredSites,
+  });
+
+  if (decision.action === 'suppress') {
+    pendingCaptures.delete(tabId);
+    return;
+  }
+
+  pendingCaptures.set(tabId, {
+    nonce: Math.random().toString(36).slice(2) + Date.now().toString(36),
+    action: decision.action,
+    saveId: decision.saveId,
+    scenario: request.scenario,
+    name: PassaveCaptureCore.deriveName(request.domain),
+    identifiers: request.identifiers,
+    password: request.password,
+    loginURL: request.loginURL,
+    domain: request.domain,
+    createdAt: Date.now(),
+    navsSeen: 0,
+  });
+}
+
+// Drop a pending capture once the tab navigates a second time.
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status !== 'loading') return;
+  const pending = pendingCaptures.get(tabId);
+  if (!pending) return;
+  pending.navsSeen += 1;
+  if (pending.navsSeen > 1) pendingCaptures.delete(tabId);
+});
+
+// ─── Message router ───────────────────────────────────────────
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  const tabId = sender.tab && sender.tab.id;
+
   if (request.type === 'CHECK_MATCHES') {
-    // 1. Check if the user is currently logged in
-    chrome.storage.local.get(['token'], async (result) => {
-      if (!result.token) {
-        return sendResponse({ success: false, matches: [] });
-      }
-
+    getToken().then(async (token) => {
+      if (!token) return sendResponse({ success: false, matches: [] });
       try {
-        // 2. Fetch the vault from your Express API
-        const res = await fetch(`${API}/save/all`, {
-          headers: {
-            Authorization: `Bearer ${result.token}`,
-            Accept: 'application/json',
-          },
-        });
-
-        // 🛡️ FIX: Catch 401/403 and clear storage, returning a specific error
-        if (res.status === 401 || res.status === 403) {
-          chrome.storage.local.remove('token');
-          return sendResponse({
-            success: false,
-            error: 'unauthorized',
-            matches: [],
-          });
-        }
-
-        if (!res.ok) {
-          return sendResponse({ success: false, matches: [] });
-        }
-
-        const data = await res.json();
-        const saves = data.saves || [];
-
-        // 🛡️ FIX: Use Regex to only replace a leading 'www.' (case-insensitive)
-        const currentDomain = request.domain.replace(/^www\./i, '');
-
-        // 3. Find matches for the exact website the user is on
-        const matches = saves.filter((s) => {
-          if (!s.loginURL) return false;
-          try {
-            const saveDomain = new URL(
-              s.loginURL.startsWith('http')
-                ? s.loginURL
-                : 'https://' + s.loginURL,
-            ).hostname.replace(/^www\./i, ''); // 🛡️ FIX: Applied regex here too
-            return saveDomain === currentDomain;
-          } catch {
-            return false;
-          }
-        });
-
-        // 4. Send the matches back to the webpage
-        sendResponse({ success: true, matches });
+        const matches = await fetchDomainMatches(token, request.domain);
+        const pending = pendingCaptures.get(tabId);
+        const pendingCapture = isFresh(pending) ? toPendingView(pending) : null;
+        sendResponse({ success: true, matches, pendingCapture });
       } catch (err) {
+        if (err.code === 'unauthorized') {
+          return sendResponse({ success: false, error: 'unauthorized', matches: [] });
+        }
         sendResponse({ success: false, matches: [] });
       }
     });
-
-    // CRITICAL: Return true indicates we will send the response asynchronously
     return true;
+  }
+
+  if (request.type === 'CAPTURE_SUBMIT') {
+    handleCaptureSubmit(request, tabId);
+    return false; // no response needed
   }
 });
