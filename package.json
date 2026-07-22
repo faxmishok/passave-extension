@@ -1,0 +1,9 @@
+{
+  "name": "passave-extension",
+  "version": "2.2.3",
+  "private": true,
+  "description": "Passave browser extension",
+  "scripts": {
+    "test": "node --test"
+  }
+}
