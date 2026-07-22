@@ -402,7 +402,7 @@ function injectCapturePill(pending) {
 
   pill.innerHTML = `
     <div style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">${title}</div>
-    <div style="font-size: 12px; color: #8888a0; margin-bottom: 12px;">${pending.username || pending.email || pending.name}</div>
+    <div style="font-size: 12px; color: #8888a0; margin-bottom: 12px;">${escapeAttr(pending.username || pending.email || pending.name)}</div>
     <div id="passave-capture-edit" style="display: none; flex-direction: column; gap: 8px; margin-bottom: 12px;">
       <input id="passave-edit-name" placeholder="Name" value="${escapeAttr(pending.name)}" style="${pcInput()}" />
       <input id="passave-edit-username" placeholder="Username" value="${escapeAttr(pending.username || '')}" style="${pcInput()}" />
@@ -454,5 +454,9 @@ function pcBtnGhost() {
   return 'background:transparent;border:none;color:#8888a0;font-size:12px;cursor:pointer;';
 }
 function escapeAttr(s) {
-  return String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
