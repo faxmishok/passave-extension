@@ -297,3 +297,64 @@ function isVisible(el) {
 
   return true;
 }
+
+// ─── 6. CREDENTIAL CAPTURE (submit → background) ──────────────
+let lastCaptureAt = 0;
+
+function isIdentifierInput(el) {
+  if (el.type === 'email' || el.type === 'tel') return true;
+  return el.type === 'text';
+}
+
+function snapshotForm(root) {
+  const inputs = Array.from(root.querySelectorAll('input')).filter(isVisible);
+  const passwordValues = inputs
+    .filter((el) => el.type === 'password')
+    .map((el) => el.value);
+  const identifierFields = inputs
+    .filter((el) => el.type !== 'password' && isIdentifierInput(el))
+    .map((el) => ({ type: el.type, value: el.value }));
+  return { identifierFields, passwordValues };
+}
+
+function handleCapture(root) {
+  const now = Date.now();
+  if (now - lastCaptureAt < 1000) return; // debounce submit + click double-fire
+  const snap = snapshotForm(root);
+  const { scenario, password } = PassaveCaptureCore.detectScenario(snap.passwordValues);
+  if (!password) return;
+  lastCaptureAt = now;
+  const identifiers = PassaveCaptureCore.classifyIdentifiers(snap.identifierFields);
+  chrome.runtime.sendMessage({
+    type: 'CAPTURE_SUBMIT',
+    domain: window.location.hostname,
+    loginURL: window.location.origin + window.location.pathname,
+    scenario,
+    password,
+    identifiers,
+  });
+}
+
+// Real form submits (capture phase runs before navigation).
+document.addEventListener(
+  'submit',
+  (e) => {
+    if (e.target instanceof HTMLFormElement) handleCapture(e.target);
+  },
+  true,
+);
+
+// SPA fallback: clicks on submit-like controls with a password field present.
+document.addEventListener(
+  'click',
+  (e) => {
+    const btn = e.target.closest(
+      'button, input[type="submit"], input[type="button"], [role="button"]',
+    );
+    if (!btn) return;
+    if (!document.querySelector('input[type="password"]')) return;
+    const form = btn.closest('form') || document;
+    handleCapture(form);
+  },
+  true,
+);
