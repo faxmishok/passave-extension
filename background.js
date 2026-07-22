@@ -3,6 +3,8 @@
  * The invisible service worker. Securely fetches credentials for the current page.
  */
 
+importScripts('lib/capture-core.js');
+
 const API = 'https://passave.org/api/v1';
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
