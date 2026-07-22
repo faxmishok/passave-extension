@@ -320,6 +320,7 @@ function snapshotForm(root) {
 }
 
 function handleCapture(root) {
+  if (window.location.hostname.replace(/^www\./i, '') === 'passave.org') return;
   const now = Date.now();
   if (now - lastCaptureAt < 1000) return; // debounce submit + click double-fire
   const snap = snapshotForm(root);
@@ -327,14 +328,20 @@ function handleCapture(root) {
   if (!password) return;
   lastCaptureAt = now;
   const identifiers = PassaveCaptureCore.classifyIdentifiers(snap.identifierFields);
-  chrome.runtime.sendMessage({
-    type: 'CAPTURE_SUBMIT',
-    domain: window.location.hostname,
-    loginURL: window.location.origin + window.location.pathname,
-    scenario,
-    password,
-    identifiers,
-  });
+  chrome.runtime.sendMessage(
+    {
+      type: 'CAPTURE_SUBMIT',
+      domain: window.location.hostname,
+      loginURL: window.location.origin + window.location.pathname,
+      scenario,
+      password,
+      identifiers,
+    },
+    (response) => {
+      if (chrome.runtime.lastError) return; // page navigated away before response — load path handles it
+      if (response && response.pendingCapture) injectCapturePill(response.pendingCapture);
+    },
+  );
 }
 
 // Real form submits (capture phase runs before navigation).

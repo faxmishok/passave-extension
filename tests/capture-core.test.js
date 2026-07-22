@@ -109,6 +109,15 @@ test('resolveCaptureAction: ignored site suppressed', () => {
   assert.equal(r.reason, 'ignored');
 });
 
+test('resolveCaptureAction: ignored site matches across www variant', () => {
+  const r = core.resolveCaptureAction({
+    domain: 'www.example.com', identifiers: ids('jane', 'jane@x.com'), password: 'pw',
+    matches: [], ignoredSites: ['example.com'],
+  });
+  assert.equal(r.action, 'suppress');
+  assert.equal(r.reason, 'ignored');
+});
+
 test('resolveCaptureAction: passave.org is always suppressed', () => {
   const r = core.resolveCaptureAction({
     domain: 'passave.org', identifiers: ids('jane', 'jane@x.com'), password: 'pw',

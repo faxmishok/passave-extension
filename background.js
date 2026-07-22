@@ -68,16 +68,16 @@ function isFresh(pending) {
 }
 
 // ─── Capture intake ───────────────────────────────────────────
-async function handleCaptureSubmit(request, tabId) {
-  if (tabId == null) return;
+async function handleCaptureSubmit(request, tabId, sendResponse) {
+  if (tabId == null) return sendResponse({ pendingCapture: null });
   const token = await getToken();
-  if (!token) return; // can't save without a logged-in vault
+  if (!token) return sendResponse({ pendingCapture: null }); // can't save without a logged-in vault
 
   let matches = [];
   try {
     matches = await fetchDomainMatches(token, request.domain);
   } catch {
-    return; // unauthorized or network error → skip prompting
+    return sendResponse({ pendingCapture: null }); // unauthorized or network error → skip prompting
   }
 
   const { ignoredSites = [] } = await storageGet(['ignoredSites']);
@@ -91,10 +91,10 @@ async function handleCaptureSubmit(request, tabId) {
 
   if (decision.action === 'suppress') {
     pendingCaptures.delete(tabId);
-    return;
+    return sendResponse({ pendingCapture: null });
   }
 
-  pendingCaptures.set(tabId, {
+  const pending = {
     nonce: Math.random().toString(36).slice(2) + Date.now().toString(36),
     action: decision.action,
     saveId: decision.saveId,
@@ -106,7 +106,10 @@ async function handleCaptureSubmit(request, tabId) {
     domain: request.domain,
     createdAt: Date.now(),
     navsSeen: 0,
-  });
+  };
+
+  pendingCaptures.set(tabId, pending);
+  sendResponse({ pendingCapture: toPendingView(pending) });
 }
 
 // Drop a pending capture once the tab navigates a second time.
@@ -159,9 +162,10 @@ async function handleSaveCredential(request, tabId, sendResponse) {
 }
 
 async function handleIgnoreSite(request, tabId, sendResponse) {
+  const bare = request.domain.replace(/^www\./i, '');
   const { ignoredSites = [] } = await storageGet(['ignoredSites']);
-  if (!ignoredSites.includes(request.domain)) {
-    ignoredSites.push(request.domain);
+  if (!ignoredSites.includes(bare)) {
+    ignoredSites.push(bare);
     await new Promise((resolve) =>
       chrome.storage.local.set({ ignoredSites }, resolve),
     );
@@ -193,8 +197,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.type === 'CAPTURE_SUBMIT') {
-    handleCaptureSubmit(request, tabId);
-    return false; // no response needed
+    handleCaptureSubmit(request, tabId, sendResponse);
+    return true;
   }
 
   if (request.type === 'SAVE_CREDENTIAL') {
