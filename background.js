@@ -3,14 +3,16 @@
  * The invisible service worker. Securely fetches credentials for the current page.
  */
 
-importScripts('lib/capture-core.js');
+importScripts('lib/capture-core.js', 'lib/pending-store.js');
 
 const API = 'https://passave.org/api/v1';
 
-// ─── In-memory pending captures (never persisted; holds plaintext pw) ──
-const pendingCaptures = new Map(); // tabId -> pending
-
-const PENDING_TTL_MS = 5 * 60 * 1000;
+// Captures awaiting the user's answer. Session-scoped, not disk-backed, and
+// invisible to content scripts — see lib/pending-store.js for why this cannot
+// be a plain Map.
+const pendingCaptures = PassavePendingStore.createPendingStore(
+  chrome.storage.session,
+);
 
 function storageGet(keys) {
   return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
@@ -63,8 +65,25 @@ function toPendingView(pending) {
   };
 }
 
-function isFresh(pending) {
-  return pending && Date.now() - pending.createdAt < PENDING_TTL_MS;
+// ─── Page load: vault matches + any prompt still owed ─────────
+async function handleCheckMatches(request, tabId, sendResponse) {
+  const token = await getToken();
+  if (!token) return sendResponse({ success: false, matches: [] });
+
+  // The prompt outlives the navigation that submitted the form, so re-serve it
+  // to the next page — but only on the domain it was captured from.
+  const pending = await pendingCaptures.get(tabId, { domain: request.domain });
+  const pendingCapture = pending ? toPendingView(pending) : null;
+
+  try {
+    const matches = await fetchDomainMatches(token, request.domain);
+    sendResponse({ success: true, matches, pendingCapture });
+  } catch (err) {
+    if (err.code === 'unauthorized') {
+      return sendResponse({ success: false, error: 'unauthorized', matches: [] });
+    }
+    sendResponse({ success: false, matches: [], pendingCapture });
+  }
 }
 
 // ─── Capture intake ───────────────────────────────────────────
@@ -90,12 +109,12 @@ async function handleCaptureSubmit(request, tabId, sendResponse) {
   });
 
   if (decision.action === 'suppress') {
-    pendingCaptures.delete(tabId);
+    await pendingCaptures.remove(tabId);
     return sendResponse({ pendingCapture: null });
   }
 
   const pending = {
-    nonce: Math.random().toString(36).slice(2) + Date.now().toString(36),
+    nonce: crypto.randomUUID(),
     action: decision.action,
     saveId: decision.saveId,
     scenario: request.scenario,
@@ -104,48 +123,38 @@ async function handleCaptureSubmit(request, tabId, sendResponse) {
     password: request.password,
     loginURL: request.loginURL,
     domain: request.domain,
-    createdAt: Date.now(),
-    navsSeen: 0,
   };
 
-  pendingCaptures.set(tabId, pending);
+  await pendingCaptures.put(tabId, pending);
   sendResponse({ pendingCapture: toPendingView(pending) });
 }
 
-// Drop a pending capture once the tab navigates a second time.
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status !== 'loading') return;
-  const pending = pendingCaptures.get(tabId);
-  if (!pending) return;
-  pending.navsSeen += 1;
-  if (pending.navsSeen > 1) pendingCaptures.delete(tabId);
+// A closed tab can never answer its prompt — drop the plaintext password.
+chrome.tabs.onRemoved.addListener((tabId) => {
+  pendingCaptures.remove(tabId).catch(() => {});
 });
 
+// The user waved the prompt away; don't re-serve it on the next page.
+async function handleDismissCapture(request, tabId, sendResponse) {
+  await pendingCaptures.remove(tabId);
+  sendResponse({ success: true });
+}
+
 async function handleSaveCredential(request, tabId, sendResponse) {
-  const pending = pendingCaptures.get(tabId);
+  const pending = await pendingCaptures.get(tabId);
   if (!pending || pending.nonce !== request.nonce) {
     return sendResponse({ success: false, error: 'stale' });
   }
   const token = await getToken();
   if (!token) return sendResponse({ success: false, error: 'unauthorized' });
 
-  const edits = request.edits || {};
-  const body = {
-    name: edits.name || pending.name,
-    username: edits.username || pending.identifiers.username,
-    email: edits.email || pending.identifiers.email,
-    password_secret: pending.password,
-    registered_number: pending.identifiers.registered_number,
-    loginURL: pending.loginURL,
-  };
-
+  const body = PassaveCaptureCore.buildSaveBody(pending, request.edits);
   const isUpdate = pending.action === 'update';
   const url = isUpdate ? `${API}/save/${pending.saveId}` : `${API}/save/add`;
-  const method = isUpdate ? 'PUT' : 'POST';
 
   try {
     const res = await fetch(url, {
-      method,
+      method: isUpdate ? 'PUT' : 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
@@ -153,8 +162,20 @@ async function handleSaveCredential(request, tabId, sendResponse) {
       },
       body: JSON.stringify(body),
     });
-    if (!res.ok) return sendResponse({ success: false, error: `http_${res.status}` });
-    pendingCaptures.delete(tabId);
+    if (!res.ok) {
+      // Surface the API's own wording — "Username is required!" is a far more
+      // actionable prompt than a bare failure state.
+      const detail = await res
+        .json()
+        .then((d) => d && d.message)
+        .catch(() => null);
+      return sendResponse({
+        success: false,
+        error: `http_${res.status}`,
+        message: detail || null,
+      });
+    }
+    await pendingCaptures.remove(tabId);
     sendResponse({ success: true });
   } catch {
     sendResponse({ success: false, error: 'network' });
@@ -162,15 +183,10 @@ async function handleSaveCredential(request, tabId, sendResponse) {
 }
 
 async function handleIgnoreSite(request, tabId, sendResponse) {
-  const bare = request.domain.replace(/^www\./i, '');
   const { ignoredSites = [] } = await storageGet(['ignoredSites']);
-  if (!ignoredSites.includes(bare)) {
-    ignoredSites.push(bare);
-    await new Promise((resolve) =>
-      chrome.storage.local.set({ ignoredSites }, resolve),
-    );
-  }
-  pendingCaptures.delete(tabId);
+  const next = PassaveCaptureCore.addIgnoredSite(ignoredSites, request.domain);
+  await chrome.storage.local.set({ ignoredSites: next });
+  await pendingCaptures.remove(tabId);
   sendResponse({ success: true });
 }
 
@@ -178,36 +194,29 @@ async function handleIgnoreSite(request, tabId, sendResponse) {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const tabId = sender.tab && sender.tab.id;
 
-  if (request.type === 'CHECK_MATCHES') {
-    getToken().then(async (token) => {
-      if (!token) return sendResponse({ success: false, matches: [] });
-      try {
-        const matches = await fetchDomainMatches(token, request.domain);
-        const pending = pendingCaptures.get(tabId);
-        const pendingCapture = isFresh(pending) ? toPendingView(pending) : null;
-        sendResponse({ success: true, matches, pendingCapture });
-      } catch (err) {
-        if (err.code === 'unauthorized') {
-          return sendResponse({ success: false, error: 'unauthorized', matches: [] });
-        }
-        sendResponse({ success: false, matches: [] });
-      }
+  // An async handler that throws would otherwise leave the port open forever
+  // and the prompt spinning with no answer.
+  const run = (handler, fallback) => {
+    Promise.resolve(handler(request, tabId, sendResponse)).catch((err) => {
+      console.error('[Passave] handler failed', request.type, err);
+      sendResponse(fallback);
     });
     return true;
-  }
+  };
 
+  if (request.type === 'CHECK_MATCHES') {
+    return run(handleCheckMatches, { success: false, matches: [] });
+  }
   if (request.type === 'CAPTURE_SUBMIT') {
-    handleCaptureSubmit(request, tabId, sendResponse);
-    return true;
+    return run(handleCaptureSubmit, { pendingCapture: null });
   }
-
   if (request.type === 'SAVE_CREDENTIAL') {
-    handleSaveCredential(request, tabId, sendResponse);
-    return true;
+    return run(handleSaveCredential, { success: false, error: 'internal' });
   }
-
   if (request.type === 'IGNORE_SITE') {
-    handleIgnoreSite(request, tabId, sendResponse);
-    return true;
+    return run(handleIgnoreSite, { success: false });
+  }
+  if (request.type === 'DISMISS_CAPTURE') {
+    return run(handleDismissCapture, { success: false });
   }
 });
