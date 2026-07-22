@@ -61,3 +61,66 @@ test('detectScenario: no non-empty passwords yields null', () => {
 test('detectScenario: two fields with one empty is change-password', () => {
   assert.deepEqual(core.detectScenario(['pw1', '']), { scenario: 'change-password', password: 'pw1' });
 });
+
+const ids = (username, email) => ({ username, email, registered_number: '' });
+
+test('resolveCaptureAction: no vault match saves new', () => {
+  const r = core.resolveCaptureAction({
+    domain: 'example.com', identifiers: ids('jane', 'jane@x.com'),
+    password: 'pw', matches: [], ignoredSites: [],
+  });
+  assert.deepEqual(r, { action: 'save-new', saveId: null, reason: 'not-in-vault' });
+});
+
+test('resolveCaptureAction: same identifier + changed password updates', () => {
+  const r = core.resolveCaptureAction({
+    domain: 'example.com', identifiers: ids('jane', 'jane@x.com'), password: 'newpw',
+    matches: [{ _id: 'abc', username: 'jane', email: 'jane@x.com', password_secret: 'oldpw' }],
+    ignoredSites: [],
+  });
+  assert.deepEqual(r, { action: 'update', saveId: 'abc', reason: 'password-changed' });
+});
+
+test('resolveCaptureAction: same identifier + same password is suppressed', () => {
+  const r = core.resolveCaptureAction({
+    domain: 'example.com', identifiers: ids('jane', 'jane@x.com'), password: 'samepw',
+    matches: [{ _id: 'abc', username: 'jane', email: 'jane@x.com', password_secret: 'samepw' }],
+    ignoredSites: [],
+  });
+  assert.equal(r.action, 'suppress');
+  assert.equal(r.reason, 'already-saved');
+});
+
+test('resolveCaptureAction: different identifier on known site saves new account', () => {
+  const r = core.resolveCaptureAction({
+    domain: 'example.com', identifiers: ids('bob', 'bob@x.com'), password: 'pw',
+    matches: [{ _id: 'abc', username: 'jane', email: 'jane@x.com', password_secret: 'oldpw' }],
+    ignoredSites: [],
+  });
+  assert.deepEqual(r, { action: 'save-new', saveId: null, reason: 'new-account' });
+});
+
+test('resolveCaptureAction: ignored site suppressed', () => {
+  const r = core.resolveCaptureAction({
+    domain: 'example.com', identifiers: ids('jane', 'jane@x.com'), password: 'pw',
+    matches: [], ignoredSites: ['example.com'],
+  });
+  assert.equal(r.action, 'suppress');
+  assert.equal(r.reason, 'ignored');
+});
+
+test('resolveCaptureAction: passave.org is always suppressed', () => {
+  const r = core.resolveCaptureAction({
+    domain: 'passave.org', identifiers: ids('jane', 'jane@x.com'), password: 'pw',
+    matches: [], ignoredSites: [],
+  });
+  assert.equal(r.reason, 'self-domain');
+});
+
+test('resolveCaptureAction: no password suppressed', () => {
+  const r = core.resolveCaptureAction({
+    domain: 'example.com', identifiers: ids('jane', ''), password: null,
+    matches: [], ignoredSites: [],
+  });
+  assert.equal(r.reason, 'no-password');
+});
