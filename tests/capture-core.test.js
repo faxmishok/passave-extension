@@ -124,3 +124,13 @@ test('resolveCaptureAction: no password suppressed', () => {
   });
   assert.equal(r.reason, 'no-password');
 });
+
+test('deriveName: registrable label, capitalized', () => {
+  assert.equal(core.deriveName('github.com'), 'Github');
+  assert.equal(core.deriveName('www.github.com'), 'Github');
+  assert.equal(core.deriveName('mail.google.com'), 'Google');
+});
+
+test('deriveName: empty falls back to Credential', () => {
+  assert.equal(core.deriveName(''), 'Credential');
+});
