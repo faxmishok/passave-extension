@@ -37,3 +37,23 @@ test('classifyIdentifiers: skips empty values', () => {
   ]);
   assert.equal(out.username, 'jane_doe');
 });
+
+test('detectScenario: single password field is login', () => {
+  assert.deepEqual(core.detectScenario(['hunter2']), { scenario: 'login', password: 'hunter2' });
+});
+
+test('detectScenario: two equal fields is signup', () => {
+  assert.deepEqual(core.detectScenario(['hunter2', 'hunter2']), { scenario: 'signup', password: 'hunter2' });
+});
+
+test('detectScenario: current + new is change-password (new is last)', () => {
+  assert.deepEqual(core.detectScenario(['oldpw', 'newpw']), { scenario: 'change-password', password: 'newpw' });
+});
+
+test('detectScenario: current + new + confirm uses the repeated new password', () => {
+  assert.deepEqual(core.detectScenario(['oldpw', 'newpw', 'newpw']), { scenario: 'change-password', password: 'newpw' });
+});
+
+test('detectScenario: no non-empty passwords yields null', () => {
+  assert.deepEqual(core.detectScenario(['', '']), { scenario: 'login', password: null });
+});
