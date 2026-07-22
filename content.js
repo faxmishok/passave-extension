@@ -20,16 +20,18 @@ window.addEventListener('load', () => {
   chrome.runtime.sendMessage(
     { type: 'CHECK_MATCHES', domain: window.location.hostname },
     (response) => {
-      if (response && response.success && response.matches.length > 0) {
+      if (!response) return;
+
+      if (response.success && response.matches.length > 0) {
         pageCredentials = response.matches[0];
-
-        // Setup the event listener that tracks where the user clicks
         setupFocusListener();
-
-        // Auto-inject if a field is already focused or available on load
         const { usernameField, passwordField } = getLoginFields();
         if (usernameField || passwordField)
           injectFloatingUI(usernameField || passwordField);
+      }
+
+      if (response.pendingCapture) {
+        injectCapturePill(response.pendingCapture);
       }
     },
   );
@@ -358,3 +360,99 @@ document.addEventListener(
   },
   true,
 );
+
+// ─── 7. CAPTURE PILL UI ───────────────────────────────────────
+function injectCapturePill(pending) {
+  const existing = document.getElementById('passave-capture-pill');
+  if (existing) existing.remove();
+
+  const isUpdate = pending.action === 'update';
+  const title = isUpdate ? 'Update password in Passave?' : 'Save to Passave?';
+  const cta = isUpdate ? 'Update' : 'Save';
+
+  const pill = document.createElement('div');
+  pill.id = 'passave-capture-pill';
+  pill.style.cssText = `
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 2147483647;
+    width: 320px;
+    background: #13131a;
+    border: 1px solid rgba(124, 106, 247, 0.3);
+    border-radius: 12px;
+    padding: 16px;
+    font-family: system-ui, -apple-system, sans-serif;
+    color: #f0f0f5;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    animation: passavePop 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  `;
+
+  if (!document.getElementById('passave-styles')) {
+    const styleBlock = document.createElement('style');
+    styleBlock.id = 'passave-styles';
+    styleBlock.textContent = `
+      @keyframes passavePop {
+        from { transform: translateY(-10px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(styleBlock);
+  }
+
+  pill.innerHTML = `
+    <div style="font-size: 14px; font-weight: 600; margin-bottom: 4px;">${title}</div>
+    <div style="font-size: 12px; color: #8888a0; margin-bottom: 12px;">${pending.username || pending.email || pending.name}</div>
+    <div id="passave-capture-edit" style="display: none; flex-direction: column; gap: 8px; margin-bottom: 12px;">
+      <input id="passave-edit-name" placeholder="Name" value="${escapeAttr(pending.name)}" style="${pcInput()}" />
+      <input id="passave-edit-username" placeholder="Username" value="${escapeAttr(pending.username || '')}" style="${pcInput()}" />
+      <input id="passave-edit-email" placeholder="Email" value="${escapeAttr(pending.email || '')}" style="${pcInput()}" />
+    </div>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <button id="passave-capture-save" style="${pcBtnPrimary()}">${cta}</button>
+      <button id="passave-capture-edit-toggle" style="${pcBtnGhost()}">Edit</button>
+      <button id="passave-capture-never" style="${pcBtnGhost()}; margin-left: auto;">Never for this site</button>
+    </div>
+  `;
+
+  document.body.appendChild(pill);
+
+  pill.querySelector('#passave-capture-edit-toggle').addEventListener('click', () => {
+    const box = pill.querySelector('#passave-capture-edit');
+    box.style.display = box.style.display === 'none' ? 'flex' : 'none';
+  });
+
+  pill.querySelector('#passave-capture-never').addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'IGNORE_SITE', domain: pending.domain });
+    pill.remove();
+  });
+
+  pill.querySelector('#passave-capture-save').addEventListener('click', () => {
+    const edits = {
+      name: pill.querySelector('#passave-edit-name').value,
+      username: pill.querySelector('#passave-edit-username').value,
+      email: pill.querySelector('#passave-edit-email').value,
+    };
+    chrome.runtime.sendMessage(
+      { type: 'SAVE_CREDENTIAL', nonce: pending.nonce, edits },
+      (res) => {
+        const ok = res && res.success;
+        pill.innerHTML = `<span style="font-size: 13px; font-weight: 600; color: ${ok ? '#50d890' : '#ff6b6b'};">${ok ? (isUpdate ? 'Updated!' : 'Saved!') : 'Could not save'}</span>`;
+        setTimeout(() => pill.remove(), 1500);
+      },
+    );
+  });
+}
+
+function pcInput() {
+  return 'background:#1a1a24;border:1px solid rgba(124,106,247,0.3);border-radius:8px;padding:8px 10px;color:#f0f0f5;font-size:12px;';
+}
+function pcBtnPrimary() {
+  return 'background:#7c6af7;border:none;border-radius:8px;padding:8px 16px;color:#fff;font-size:13px;font-weight:600;cursor:pointer;';
+}
+function pcBtnGhost() {
+  return 'background:transparent;border:none;color:#8888a0;font-size:12px;cursor:pointer;';
+}
+function escapeAttr(s) {
+  return String(s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
