@@ -331,7 +331,8 @@ function snapshotForm(root) {
 }
 
 function handleCapture(root) {
-  if (window.location.hostname.replace(/^www\./i, '') === 'passave.org') return;
+  // Never snapshot the vault's own login form.
+  if (PassaveCaptureCore.normalizeDomain(window.location.hostname) === 'passave.org') return;
   const now = Date.now();
   if (now - lastCaptureAt < 1000) return; // debounce submit + click double-fire
   const snap = snapshotForm(root);
