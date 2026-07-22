@@ -57,3 +57,7 @@ test('detectScenario: current + new + confirm uses the repeated new password', (
 test('detectScenario: no non-empty passwords yields null', () => {
   assert.deepEqual(core.detectScenario(['', '']), { scenario: 'login', password: null });
 });
+
+test('detectScenario: two fields with one empty is change-password', () => {
+  assert.deepEqual(core.detectScenario(['pw1', '']), { scenario: 'change-password', password: 'pw1' });
+});
