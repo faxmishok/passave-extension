@@ -118,6 +118,58 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (pending.navsSeen > 1) pendingCaptures.delete(tabId);
 });
 
+async function handleSaveCredential(request, tabId, sendResponse) {
+  const pending = pendingCaptures.get(tabId);
+  if (!pending || pending.nonce !== request.nonce) {
+    return sendResponse({ success: false, error: 'stale' });
+  }
+  const token = await getToken();
+  if (!token) return sendResponse({ success: false, error: 'unauthorized' });
+
+  const edits = request.edits || {};
+  const body = {
+    name: edits.name || pending.name,
+    username: edits.username || pending.identifiers.username,
+    email: edits.email || pending.identifiers.email,
+    password_secret: pending.password,
+    registered_number: pending.identifiers.registered_number,
+    loginURL: pending.loginURL,
+  };
+
+  const isUpdate = pending.action === 'update';
+  const url = isUpdate ? `${API}/save/${pending.saveId}` : `${API}/save/add`;
+  const method = isUpdate ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return sendResponse({ success: false, error: `http_${res.status}` });
+    pendingCaptures.delete(tabId);
+    sendResponse({ success: true });
+  } catch {
+    sendResponse({ success: false, error: 'network' });
+  }
+}
+
+async function handleIgnoreSite(request, tabId, sendResponse) {
+  const { ignoredSites = [] } = await storageGet(['ignoredSites']);
+  if (!ignoredSites.includes(request.domain)) {
+    ignoredSites.push(request.domain);
+    await new Promise((resolve) =>
+      chrome.storage.local.set({ ignoredSites }, resolve),
+    );
+  }
+  pendingCaptures.delete(tabId);
+  sendResponse({ success: true });
+}
+
 // ─── Message router ───────────────────────────────────────────
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const tabId = sender.tab && sender.tab.id;
@@ -143,5 +195,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'CAPTURE_SUBMIT') {
     handleCaptureSubmit(request, tabId);
     return false; // no response needed
+  }
+
+  if (request.type === 'SAVE_CREDENTIAL') {
+    handleSaveCredential(request, tabId, sendResponse);
+    return true;
+  }
+
+  if (request.type === 'IGNORE_SITE') {
+    handleIgnoreSite(request, tabId, sendResponse);
+    return true;
   }
 });
