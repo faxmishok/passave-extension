@@ -42,16 +42,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   setGreeting();
   await getCurrentTab();
 
+  // bindEvents() must run no matter what happens below — a dead worker
+  // connection must not leave every listener in the popup unbound.
+  bindEvents();
+
   // Tokens live in the service worker. The popup only ever asks.
-  const state = await chrome.runtime.sendMessage({ type: 'AUTH_STATE' });
+  let state;
+  try {
+    state = await chrome.runtime.sendMessage({ type: 'AUTH_STATE' });
+  } catch {
+    // Can't reach the worker to learn state — sign-in is the safe default
+    // and self-corrects the next time the popup opens.
+    showLogin();
+    return;
+  }
+
   if (state && state.signedIn) {
     showVault(state.username);
     fetchSaves();
   } else {
     showLogin();
   }
-
-  bindEvents();
 });
 
 // ─── GREETING ────────────────────────────────────────────────
@@ -187,10 +198,17 @@ async function handleLogin(e) {
   const password = loginPassword.value;
   const otp = loginOtp.value.trim();
 
-  const result = await chrome.runtime.sendMessage({
-    type: 'AUTH_LOGIN',
-    credentials: { email, password, otp },
-  });
+  let result;
+  try {
+    result = await chrome.runtime.sendMessage({
+      type: 'AUTH_LOGIN',
+      credentials: { email, password, otp },
+    });
+  } catch {
+    setLoginLoading(false);
+    showError('Could not reach the extension service — try reopening the popup.');
+    return;
+  }
 
   setLoginLoading(false);
 
@@ -223,7 +241,15 @@ function hideError() {
 
 // ─── LOGOUT ──────────────────────────────────────────────────
 async function handleLogout() {
-  await chrome.runtime.sendMessage({ type: 'AUTH_LOGOUT' });
+  try {
+    await chrome.runtime.sendMessage({ type: 'AUTH_LOGOUT' });
+  } catch {
+    // The message never reached the worker, so nothing was revoked and the
+    // tokens are still on disk. Claiming a sign-out that didn't happen would
+    // be worse than telling the truth and letting the user retry.
+    showToast('Could not sign out — please try again', 'error');
+    return;
+  }
   resetToLogin();
 }
 
@@ -247,7 +273,14 @@ async function fetchSaves() {
       <p>Decrypting vault…</p>
     </div>`;
 
-  const res = await chrome.runtime.sendMessage({ type: 'VAULT_FETCH' });
+  let res;
+  try {
+    res = await chrome.runtime.sendMessage({ type: 'VAULT_FETCH' });
+  } catch {
+    // A messaging failure says nothing about the session — fall through to
+    // the generic failure branch below rather than signing the user out.
+    res = null;
+  }
 
   if (!res || !res.success) {
     // Only a real token failure returns to the sign-in screen. A rate limit or
