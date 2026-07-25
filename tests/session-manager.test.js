@@ -245,6 +245,36 @@ test('refreshTokens: an unusable 200 body wipes, since signout must mean cleared
   assert.equal('auth' in storage.dump(), false);
 });
 
+test('refreshTokens: a 200 with an unparseable body is unavailable and leaves tokens intact', async () => {
+  const storage = fakeStorage(signedIn);
+  // No `body` field at all — fakeFetch's json() throws, exactly like a
+  // TLS-inspecting proxy's HTML block page or a CDN maintenance page served
+  // with a 200. This must never be read as "the session is gone".
+  const fetchImpl = fakeFetch([{ status: 200 }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.deepEqual(storage.dump().auth, signedIn.auth);
+});
+
+test('refreshTokens: a 200 that drops refreshToken never downgrades a non-legacy session', async () => {
+  const storage = fakeStorage(signedIn);
+  // A well-formed body carrying `token` but no `refreshToken` — readAuthPayload
+  // happily returns a legacy-shaped record for it. That's the right read for
+  // login against a pre-cutover backend, but wrong here: this session already
+  // had a rotating refresh token, so silently downgrading it to legacy would
+  // strand the user at the very next access-token expiry.
+  const fetchImpl = fakeFetch([
+    { status: 200, body: { success: true, token: 'access.2', expiresIn: 900 } },
+  ]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.deepEqual(storage.dump().auth, signedIn.auth);
+  assert.equal(storage.dump().auth.legacy, false);
+  assert.equal(storage.dump().auth.refreshToken, 'refresh.1');
+});
+
 test('refreshTokens: a network failure resolves unavailable and leaves tokens alone', async () => {
   const storage = fakeStorage(signedIn);
   const fetchImpl = fakeFetch([{ throws: true }]);

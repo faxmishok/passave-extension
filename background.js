@@ -228,6 +228,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   };
 
+  // AUTH_STATE / AUTH_LOGIN / AUTH_LOGOUT / VAULT_FETCH exist for the popup
+  // only — they hand back the whole vault or revoke the session. The popup
+  // has no sender.tab; anything running in a content script's isolated
+  // world does, since it's injected into a page. Reject those senders
+  // outright rather than routing them to a handler, and still resolve the
+  // port immediately so the caller isn't left hanging.
+  const popupOnly = (handler, fallback) => {
+    if (sender.tab) {
+      sendResponse(fallback);
+      return true;
+    }
+    return run(handler, fallback);
+  };
+
   if (request.type === 'CHECK_MATCHES') {
     return run(handleCheckMatches, { success: false, matches: [] });
   }
@@ -244,15 +258,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return run(handleDismissCapture, { success: false });
   }
   if (request.type === 'AUTH_STATE') {
-    return run(handleAuthState, { signedIn: false, username: null });
+    return popupOnly(handleAuthState, { signedIn: false, username: null });
   }
   if (request.type === 'AUTH_LOGIN') {
-    return run(handleAuthLogin, { success: false, message: 'Login failed. Please try again.' });
+    return popupOnly(handleAuthLogin, { success: false, message: 'Login failed. Please try again.' });
   }
   if (request.type === 'AUTH_LOGOUT') {
-    return run(handleAuthLogout, { success: true });
+    return popupOnly(handleAuthLogout, { success: true });
   }
   if (request.type === 'VAULT_FETCH') {
-    return run(handleVaultFetch, { success: false, saves: [], reason: 'internal' });
+    return popupOnly(handleVaultFetch, { success: false, saves: [], reason: 'internal' });
   }
 });
