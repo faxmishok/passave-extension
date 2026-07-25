@@ -231,4 +231,53 @@ test('refreshTokens: legacy mode never calls the refresh endpoint', async () => 
 
   assert.equal(await manager.refreshTokens(), 'signout');
   assert.equal(fetchImpl.calls.length, 0);
+  // 'signout' is an invariant: credentials must be gone, even on the
+  // no-refresh-token path where clearAuthRecord() has nothing new to do.
+  assert.equal('auth' in storage.dump(), false);
+});
+
+test('refreshTokens: an unusable 200 body wipes, since signout must mean cleared', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ status: 200, body: { success: true } }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'signout');
+  assert.equal('auth' in storage.dump(), false);
+});
+
+test('refreshTokens: a network failure resolves unavailable and leaves tokens alone', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ throws: true }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.deepEqual(storage.dump().auth, signedIn.auth);
+});
+
+test('refreshTokens: a 5xx resolves unavailable and leaves tokens alone', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ status: 500, body: { message: 'boom' } }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.deepEqual(storage.dump().auth, signedIn.auth);
+});
+
+test('refreshTokens: a 429 resolves unavailable and never wipes tokens', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ status: 429, body: { code: 'RATE_LIMITED' } }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.deepEqual(storage.dump().auth, signedIn.auth);
+});
+
+test('refreshTokens: the in-flight slot is released after a failed attempt', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ throws: true }, { throws: true }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.equal(fetchImpl.calls.length, 2);
 });
