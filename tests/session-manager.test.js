@@ -548,3 +548,110 @@ test('apiFetch: passes method and body through for writes', async () => {
   assert.equal(call.init.headers.Authorization, 'Bearer access.1');
   assert.equal(JSON.parse(call.init.body).name, 'GitHub');
 });
+
+test('apiFetch: an unrecognized failure status surfaces as reason "http" without wiping tokens', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ status: 500, body: { message: 'boom' } }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  const res = await manager.apiFetch('/save/all');
+  assert.equal(res.reason, 'http');
+  assert.equal(res.status, 500);
+  assert.equal(storage.dump().auth.accessToken, 'access.1');
+});
+
+test('apiFetch: a caller-supplied credentials cannot defeat cookie suppression', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ status: 200, body: { success: true } }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  await manager.apiFetch('/save/all', { credentials: 'include' });
+
+  assert.equal(fetchImpl.calls[0].init.credentials, 'omit');
+});
+
+test('apiFetch: a Headers instance for init.headers is not silently dropped', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ status: 200, body: { success: true } }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  await manager.apiFetch('/save/add', {
+    method: 'POST',
+    headers: new Headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ name: 'GitHub' }),
+  });
+
+  const call = fetchImpl.calls[0];
+  assert.equal(call.init.headers['content-type'] || call.init.headers['Content-Type'], 'application/json');
+  assert.equal(call.init.headers.Authorization, 'Bearer access.1');
+});
+
+test('apiFetch: a 401 that outlives another caller\'s rotation retries instead of refreshing again', async () => {
+  // Simulates the race Task 7 will introduce: two concurrent apiFetch calls
+  // both attempt with the same (about-to-expire) access token. One of them
+  // drives the rotation to completion; the other's 401 is only handled
+  // AFTER that rotation has already landed in storage. The stale one must
+  // retry with the fresh token instead of starting a second rotation.
+  const baseStorage = fakeStorage(signedIn);
+  let resolveGate;
+  const gate = new Promise((resolve) => {
+    resolveGate = resolve;
+  });
+  // Wraps the real storage so the gate opens exactly when the rotated
+  // token lands — not on a guessed delay — keeping the test deterministic
+  // regardless of how the two calls actually interleave.
+  const storage = Object.assign({}, baseStorage, {
+    async set(items) {
+      await baseStorage.set(items);
+      if (items.auth && items.auth.accessToken === 'access.2') resolveGate();
+    },
+  });
+
+  function fakeResponse(status, body) {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      headers: { get: () => null },
+      json: async () => body,
+    };
+  }
+
+  const calls = [];
+  let staleAttempts = 0;
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    const auth = init.headers.Authorization;
+    if (url.endsWith('/save/all') && auth === 'Bearer access.1') {
+      staleAttempts += 1;
+      // Whichever of the two concurrent attempts arrives second is the
+      // "stale" one: hold its 401 back until the other's rotation has
+      // actually written the new token to storage.
+      if (staleAttempts === 2) await gate;
+      return fakeResponse(401, { code: 'TOKEN_EXPIRED' });
+    }
+    if (url.endsWith('/auth/refresh')) {
+      return fakeResponse(200, {
+        success: true,
+        token: 'access.2',
+        refreshToken: 'refresh.2',
+        expiresIn: 900,
+      });
+    }
+    if (url.endsWith('/save/all') && auth === 'Bearer access.2') {
+      return fakeResponse(200, { success: true, saves: [] });
+    }
+    throw new Error(`unexpected fetch: ${url} ${auth}`);
+  };
+
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  const [a, b] = await Promise.all([
+    manager.apiFetch('/save/all'),
+    manager.apiFetch('/save/all'),
+  ]);
+
+  assert.equal(a.ok, true);
+  assert.equal(b.ok, true);
+  const refreshCalls = calls.filter((c) => c.url.endsWith('/auth/refresh'));
+  assert.equal(refreshCalls.length, 1, 'the stale 401 must not trigger a second rotation');
+});
