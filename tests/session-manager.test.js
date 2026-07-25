@@ -146,3 +146,89 @@ test('buildHeaders: omits Authorization when there is no token', async () => {
   assert.equal('Authorization' in headers, false);
   assert.equal(headers['X-Platform'], 'extension');
 });
+
+const signedIn = {
+  auth: { accessToken: 'access.1', refreshToken: 'refresh.1', expiresAt: null, legacy: false },
+  username: 'jane',
+};
+
+test('refreshTokens: stores both rotated tokens, never keeping the old one', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([
+    { status: 200, body: { success: true, token: 'access.2', refreshToken: 'refresh.2', expiresIn: 900 } },
+  ]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'ok');
+
+  const stored = storage.dump().auth;
+  assert.equal(stored.accessToken, 'access.2');
+  assert.equal(stored.refreshToken, 'refresh.2');
+  assert.equal(stored.expiresAt, 1_000_000 + 900_000);
+
+  const call = fetchImpl.calls[0];
+  assert.equal(call.url, 'https://passave.org/api/v1/auth/refresh');
+  assert.equal(JSON.parse(call.init.body).refreshToken, 'refresh.1');
+});
+
+test('refreshTokens: concurrent callers share ONE request', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([
+    { status: 200, body: { success: true, token: 'access.2', refreshToken: 'refresh.2', expiresIn: 900 } },
+  ]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  const outcomes = await Promise.all([
+    manager.refreshTokens(),
+    manager.refreshTokens(),
+    manager.refreshTokens(),
+    manager.refreshTokens(),
+    manager.refreshTokens(),
+  ]);
+
+  assert.deepEqual(outcomes, ['ok', 'ok', 'ok', 'ok', 'ok']);
+  assert.equal(fetchImpl.calls.length, 1, 'a second refresh would risk TOKEN_REUSED');
+});
+
+test('refreshTokens: the in-flight promise is released for the next cycle', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([
+    { status: 200, body: { success: true, token: 'access.2', refreshToken: 'refresh.2', expiresIn: 900 } },
+  ]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  await manager.refreshTokens();
+  await manager.refreshTokens();
+  assert.equal(fetchImpl.calls.length, 2);
+});
+
+test('refreshTokens: TOKEN_REUSED wipes immediately and never retries', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([
+    { status: 401, body: { success: false, code: 'TOKEN_REUSED', message: 'revoked' } },
+  ]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'signout');
+  assert.equal('auth' in storage.dump(), false);
+  assert.equal(fetchImpl.calls.length, 1);
+});
+
+test('refreshTokens: TOKEN_INVALID wipes', async () => {
+  const storage = fakeStorage(signedIn);
+  const { manager } = build({
+    storage,
+    fetch: fakeFetch([{ status: 401, body: { code: 'TOKEN_INVALID' } }]),
+  });
+  assert.equal(await manager.refreshTokens(), 'signout');
+  assert.equal('auth' in storage.dump(), false);
+});
+
+test('refreshTokens: legacy mode never calls the refresh endpoint', async () => {
+  const storage = fakeStorage({ token: 'old.jwt.value' });
+  const fetchImpl = fakeFetch([{ status: 200, body: {} }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'signout');
+  assert.equal(fetchImpl.calls.length, 0);
+});
