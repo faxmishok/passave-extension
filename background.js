@@ -101,11 +101,17 @@ async function handleCaptureSubmit(request, tabId, sendResponse) {
   const { signedIn } = await session.getAuthState();
   if (!signedIn) return sendResponse({ pendingCapture: null }); // can't save without a logged-in vault
 
+  // Skipping the prompt on any vault-read failure is deliberate, and it is a
+  // change from the pre-migration behaviour, which prompted with an empty match
+  // list. Without a readable vault we cannot tell "new credential" from
+  // "password changed on an existing one", and guessing wrong creates a
+  // duplicate entry rather than updating the save the user already has.
+  // Losing one capture prompt is the cheaper mistake.
   let matches = [];
   try {
     matches = await fetchDomainMatches(request.domain);
   } catch {
-    return sendResponse({ pendingCapture: null }); // signed out or network error → skip prompting
+    return sendResponse({ pendingCapture: null });
   }
 
   const { ignoredSites = [] } = await storageGet(['ignoredSites']);
@@ -167,6 +173,15 @@ async function handleSaveCredential(request, tabId, sendResponse) {
   if (!res.ok) {
     if (res.reason === 'signed_out') {
       return sendResponse({ success: false, error: 'unauthorized' });
+    }
+    // A 429 is a rate limit, not a connectivity problem — "check your
+    // connection" would send the user chasing the wrong thing.
+    if (res.status === 429) {
+      return sendResponse({
+        success: false,
+        error: 'network',
+        message: 'Passave is rate limited right now — try again in a moment',
+      });
     }
     if (res.reason === 'network' || res.reason === 'network_unavailable') {
       return sendResponse({ success: false, error: 'network' });
@@ -264,7 +279,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return popupOnly(handleAuthLogin, { success: false, message: 'Login failed. Please try again.' });
   }
   if (request.type === 'AUTH_LOGOUT') {
-    return popupOnly(handleAuthLogout, { success: true });
+    // signOut() reports success even when the server call fails, by design.
+    // This fallback fires only when the handler itself threw — i.e. clearing
+    // storage failed and the credentials are still on disk — so it must not
+    // claim a sign-out that did not happen.
+    return popupOnly(handleAuthLogout, { success: false });
   }
   if (request.type === 'VAULT_FETCH') {
     return popupOnly(handleVaultFetch, { success: false, saves: [], reason: 'internal' });

@@ -241,15 +241,22 @@ function hideError() {
 
 // ─── LOGOUT ──────────────────────────────────────────────────
 async function handleLogout() {
+  let result;
   try {
-    await chrome.runtime.sendMessage({ type: 'AUTH_LOGOUT' });
+    result = await chrome.runtime.sendMessage({ type: 'AUTH_LOGOUT' });
   } catch {
-    // The message never reached the worker, so nothing was revoked and the
-    // tokens are still on disk. Claiming a sign-out that didn't happen would
-    // be worse than telling the truth and letting the user retry.
+    result = null;
+  }
+
+  // Either the message never reached the worker, or the worker failed to clear
+  // storage. Both mean the credentials are still on disk, so showing the
+  // sign-in screen would claim a sign-out that didn't happen — and the user
+  // would flip back to the vault on the next open. Tell the truth instead.
+  if (!result || !result.success) {
     showToast('Could not sign out — please try again', 'error');
     return;
   }
+
   resetToLogin();
 }
 

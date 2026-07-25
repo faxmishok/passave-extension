@@ -531,6 +531,24 @@ test('apiFetch: an expired access token refreshes before spending a request', as
   assert.equal(fetchImpl.calls[0].url, 'https://passave.org/api/v1/auth/refresh');
 });
 
+test('apiFetch: a clock that says expired never decides auth on its own', async () => {
+  // A cooldown is parked, so the pre-flight refresh cannot run. The stored
+  // token is expired only according to our clock — if that clock is wrong the
+  // request still succeeds, so it must be sent rather than failed locally.
+  const storage = fakeStorage({
+    auth: { accessToken: 'access.1', refreshToken: 'refresh.1', expiresAt: 999_999, legacy: false },
+    refreshCooldownUntil: 1_000_001,
+  });
+  const fetchImpl = fakeFetch([{ status: 200, body: { success: true, saves: [] } }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  const res = await manager.apiFetch('/save/all');
+  assert.equal(res.ok, true);
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(fetchImpl.calls[0].url, 'https://passave.org/api/v1/save/all');
+  assert.equal(fetchImpl.calls[0].init.headers.Authorization, 'Bearer access.1');
+});
+
 test('apiFetch: legacy mode 401s straight to signed out, no refresh call', async () => {
   const storage = fakeStorage({ token: 'old.jwt.value' });
   const fetchImpl = fakeFetch([{ status: 401, body: { code: 'TOKEN_EXPIRED' } }]);

@@ -32,11 +32,6 @@ test('readAuthPayload: no token at all is not a session', () => {
   assert.equal(core.readAuthPayload(null, 5), null);
 });
 
-test('isLegacyPayload: keyed on the absence of refreshToken', () => {
-  assert.equal(core.isLegacyPayload({ token: 't' }), true);
-  assert.equal(core.isLegacyPayload({ token: 't', refreshToken: 'r' }), false);
-});
-
 test('isAccessTokenExpired: unknown expiry never counts as expired', () => {
   assert.equal(core.isAccessTokenExpired({ expiresAt: null }, 999), false);
   assert.equal(core.isAccessTokenExpired({ expiresAt: 1000 }, 999), false);
