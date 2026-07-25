@@ -3,8 +3,6 @@
  * Smart-fill enabled.
  */
 
-const API = 'https://passave.org/api/v1';
-
 // ─── DOM refs ───────────────────────────────────────────────
 const screenLogin = document.getElementById('screen-login');
 const screenVault = document.getElementById('screen-vault');
@@ -44,14 +42,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   setGreeting();
   await getCurrentTab();
 
-  chrome.storage.local.get(['token', 'username'], ({ token, username }) => {
-    if (token) {
-      showVault(username);
-      fetchSaves(token);
-    } else {
-      showLogin();
-    }
-  });
+  // Tokens live in the service worker. The popup only ever asks.
+  const state = await chrome.runtime.sendMessage({ type: 'AUTH_STATE' });
+  if (state && state.signedIn) {
+    showVault(state.username);
+    fetchSaves();
+  } else {
+    showLogin();
+  }
 
   bindEvents();
 });
@@ -189,43 +187,20 @@ async function handleLogin(e) {
   const password = loginPassword.value;
   const otp = loginOtp.value.trim();
 
-  try {
-    const res = await fetch(`${API}/auth/login`, {
-      method: 'POST',
-      credentials: 'omit',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({ email, password, otp }),
-    });
+  const result = await chrome.runtime.sendMessage({
+    type: 'AUTH_LOGIN',
+    credentials: { email, password, otp },
+  });
 
-    const data = await res.json();
+  setLoginLoading(false);
 
-    if (!res.ok || !data.success) {
-      showError(data.message || 'Login failed. Check your credentials.');
-      setLoginLoading(false);
-      return;
-    }
-
-    const token = data.token;
-    if (!token) {
-      showError('Authentication failed: No secure token received from server.');
-      setLoginLoading(false);
-      return;
-    }
-
-    const username = data.user?.username || email.split('@')[0];
-
-    chrome.storage.local.set({ token, username }, () => {
-      setLoginLoading(false);
-      showVault(username);
-      fetchSaves(token);
-    });
-  } catch (err) {
-    showError('Network error — check your connection.');
-    setLoginLoading(false);
+  if (!result || !result.success) {
+    showError((result && result.message) || 'Login failed. Check your credentials.');
+    return;
   }
+
+  showVault(result.username);
+  fetchSaves();
 }
 
 function setLoginLoading(loading) {
@@ -247,59 +222,59 @@ function hideError() {
 }
 
 // ─── LOGOUT ──────────────────────────────────────────────────
-function handleLogout() {
-  chrome.storage.local.remove(['token', 'username'], () => {
-    allSaves = [];
-    currentSave = null;
-    loginForm.reset();
-    closeDetail();
+async function handleLogout() {
+  await chrome.runtime.sendMessage({ type: 'AUTH_LOGOUT' });
+  resetToLogin();
+}
 
-    // 🛡️ FIX: Hide banner if it was open during logout
-    if (pageMatchBanner) pageMatchBanner.style.display = 'none';
+function resetToLogin() {
+  allSaves = [];
+  currentSave = null;
+  loginForm.reset();
+  closeDetail();
 
-    showLogin();
-  });
+  // 🛡️ FIX: Hide banner if it was open during logout
+  if (pageMatchBanner) pageMatchBanner.style.display = 'none';
+
+  showLogin();
 }
 
 // ─── FETCH SAVES ─────────────────────────────────────────────
-async function fetchSaves(token) {
+async function fetchSaves() {
   savesList.innerHTML = `
     <div class="loading-state">
       <div class="loading-dots"><span></span><span></span><span></span></div>
       <p>Decrypting vault…</p>
     </div>`;
 
-  try {
-    const res = await fetch(`${API}/save/all`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-      },
-    });
+  const res = await chrome.runtime.sendMessage({ type: 'VAULT_FETCH' });
 
-    // 🛡️ FIX: Only log out on strict auth failures (401/403)
-    if (res.status === 401 || res.status === 403) {
-      handleLogout();
+  if (!res || !res.success) {
+    // Only a real token failure returns to the sign-in screen. A rate limit or
+    // a dead network leaves a valid 30-day session in place — throwing it away
+    // over a transient condition is the expensive mistake here.
+    if (res && res.reason === 'signed_out') {
+      showToast('Session ended — please sign in again.', 'error');
+      resetToLogin();
       return;
     }
 
-    if (!res.ok) throw new Error('Network error');
-
-    const data = await res.json();
-    if (!data.success) throw new Error(data.message);
-
-    allSaves = data.saves || [];
-    vaultCount.textContent = allSaves.length;
-    renderSaves(allSaves);
-    checkPageMatch();
-  } catch (err) {
-    // 🛡️ FIX: Show error without clearing storage/logging out
-    showToast('Could not reach vault — check your connection.', 'error');
+    const message =
+      res && res.reason === 'network_unavailable'
+        ? "Can't reach Passave right now — try again in a moment."
+        : 'Could not reach vault — check your connection.';
+    showToast(message, 'error');
     savesList.innerHTML = `
       <div class="empty-state">
-        <p style="color: var(--danger)">Network error connecting to vault.</p>
+        <p style="color: var(--danger)">${escapeHtml(message)}</p>
       </div>`;
+    return;
   }
+
+  allSaves = res.saves || [];
+  vaultCount.textContent = allSaves.length;
+  renderSaves(allSaves);
+  checkPageMatch();
 }
 
 // ─── RENDER ──────────────────────────────────────────────────
