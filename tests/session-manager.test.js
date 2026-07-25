@@ -261,6 +261,9 @@ test('refreshTokens: a 5xx resolves unavailable and leaves tokens alone', async 
 
   assert.equal(await manager.refreshTokens(), 'unavailable');
   assert.deepEqual(storage.dump().auth, signedIn.auth);
+  // Retrying a 5xx risks re-presenting a refresh token that already rotated
+  // server-side before the response was lost — only a 429 is safe to retry.
+  assert.equal(fetchImpl.calls.length, 1);
 });
 
 test('refreshTokens: a 429 resolves unavailable and never wipes tokens', async () => {
@@ -363,11 +366,38 @@ test('refreshTokens: a long Retry-After is parked, not slept through', async () 
   assert.equal(storage.dump().auth.refreshToken, 'refresh.1');
 });
 
-test('refreshTokens: a network failure backs off instead of signing out', async () => {
+test('refreshTokens: a thrown fetch bails without retrying or parking a cooldown', async () => {
   const storage = fakeStorage(signedIn);
   const fetchImpl = fakeFetch([{ throws: true }]);
   const { manager } = build({ storage, fetch: fetchImpl });
 
   assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.equal(storage.dump().auth.refreshToken, 'refresh.1');
+  // A thrown fetch is the lost-response case: the request may have already
+  // reached the server and rotated the token even though we never saw the
+  // reply. Retrying would re-present a possibly spent token and read as
+  // TOKEN_REUSED, so this gets exactly one attempt and no parked cooldown —
+  // unlike a 429, which is guaranteed to predate any rotation.
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal('refreshCooldownUntil' in storage.dump(), false);
+});
+
+test('refreshTokens: an absurd Retry-After parks the 15-minute cap, not the raw value', async () => {
+  const storage = fakeStorage(signedIn);
+  const slept = [];
+  const fetchImpl = fakeFetch([
+    { status: 429, body: { success: false }, headers: { 'Retry-After': '86400' } },
+  ]);
+  const { manager } = build({
+    storage,
+    fetch: fetchImpl,
+    sleep: async (ms) => slept.push(ms),
+  });
+
+  // A day-long Retry-After must not lock the user out for a day.
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.deepEqual(slept, []);
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(storage.dump().refreshCooldownUntil, 1_000_000 + 15 * 60 * 1000);
   assert.equal(storage.dump().auth.refreshToken, 'refresh.1');
 });
