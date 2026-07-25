@@ -655,3 +655,109 @@ test('apiFetch: a 401 that outlives another caller\'s rotation retries instead o
   const refreshCalls = calls.filter((c) => c.url.endsWith('/auth/refresh'));
   assert.equal(refreshCalls.length, 1, 'the stale 401 must not trigger a second rotation');
 });
+
+test('login: stores the pair and derives a username', async () => {
+  const storage = fakeStorage();
+  const fetchImpl = fakeFetch([
+    { status: 200, body: { success: true, token: 'access.1', refreshToken: 'refresh.1', expiresIn: 900 } },
+  ]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  const out = await manager.login({ email: 'jane@example.com', password: 'pw', otp: '123456' });
+  assert.deepEqual(out, { success: true, username: 'jane' });
+
+  const call = fetchImpl.calls[0];
+  assert.equal(call.url, 'https://passave.org/api/v1/auth/login');
+  assert.deepEqual(JSON.parse(call.init.body), {
+    email: 'jane@example.com',
+    password: 'pw',
+    otp: '123456',
+  });
+  assert.equal(storage.dump().auth.refreshToken, 'refresh.1');
+  assert.equal(storage.dump().username, 'jane');
+});
+
+test('login: a pre-cutover backend yields a legacy session and no refresh loop', async () => {
+  const storage = fakeStorage();
+  const { manager } = build({
+    storage,
+    fetch: fakeFetch([{ status: 200, body: { success: true, token: 'legacy.jwt' } }]),
+  });
+
+  assert.equal((await manager.login({ email: 'jane@example.com', password: 'pw', otp: '1' })).success, true);
+  assert.equal(storage.dump().auth.legacy, true);
+  assert.equal(storage.dump().auth.refreshToken, null);
+});
+
+test('login: surfaces the API message on failure and stores nothing', async () => {
+  const storage = fakeStorage();
+  const { manager } = build({
+    storage,
+    fetch: fakeFetch([{ status: 401, body: { success: false, message: 'Invalid OTP. Please try again or contact support.' } }]),
+  });
+
+  const out = await manager.login({ email: 'jane@example.com', password: 'pw', otp: '000000' });
+  assert.equal(out.success, false);
+  assert.equal(out.message, 'Invalid OTP. Please try again or contact support.');
+  assert.equal('auth' in storage.dump(), false);
+});
+
+test('login: a dead network reports a network error, not a credential error', async () => {
+  const { manager } = build({ fetch: fakeFetch([{ throws: true }]) });
+  const out = await manager.login({ email: 'jane@example.com', password: 'pw', otp: '1' });
+  assert.equal(out.success, false);
+  assert.match(out.message, /connection/i);
+});
+
+test('login: clears a stale cooldown from a previous session', async () => {
+  const storage = fakeStorage({ refreshCooldownUntil: 9_999_999 });
+  const { manager } = build({
+    storage,
+    fetch: fakeFetch([{ status: 200, body: { success: true, token: 'a', refreshToken: 'r', expiresIn: 900 } }]),
+  });
+
+  await manager.login({ email: 'jane@example.com', password: 'pw', otp: '1' });
+  assert.equal('refreshCooldownUntil' in storage.dump(), false);
+});
+
+test('signOut: revokes with the bearer header BEFORE clearing storage', async () => {
+  const storage = fakeStorage(signedIn);
+  const seen = [];
+  const fetchImpl = async (url, init) => {
+    // Read storage at request time: proving order, not just the header value.
+    seen.push({ url, auth: init.headers.Authorization, stillStored: storage.dump().auth });
+    return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ success: true }) };
+  };
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.deepEqual(await manager.signOut(), { success: true });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].url, 'https://passave.org/api/v1/auth/signout');
+  assert.equal(seen[0].auth, 'Bearer access.1');
+  assert.ok(seen[0].stillStored, 'clearing first would leave nothing to revoke with');
+  assert.equal('auth' in storage.dump(), false);
+});
+
+test('signOut: clears locally even when the revoke call fails', async () => {
+  const storage = fakeStorage(signedIn);
+  const { manager } = build({ storage, fetch: fakeFetch([{ throws: true }]) });
+
+  assert.deepEqual(await manager.signOut(), { success: true });
+  assert.equal('auth' in storage.dump(), false);
+});
+
+test('signOut: with no stored session, skips the request', async () => {
+  const fetchImpl = fakeFetch([{ status: 200, body: {} }]);
+  const { manager } = build({ fetch: fetchImpl });
+
+  await manager.signOut();
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('getAuthState: reports the stored session', async () => {
+  const { manager } = build({ storage: fakeStorage(signedIn) });
+  assert.deepEqual(await manager.getAuthState(), { signedIn: true, username: 'jane' });
+
+  const { manager: empty } = build();
+  assert.deepEqual(await empty.getAuthState(), { signedIn: false, username: null });
+});
