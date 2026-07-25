@@ -281,3 +281,93 @@ test('refreshTokens: the in-flight slot is released after a failed attempt', asy
   assert.equal(await manager.refreshTokens(), 'unavailable');
   assert.equal(fetchImpl.calls.length, 2);
 });
+
+test('refreshTokens: a 429 retries with backoff and never wipes tokens', async () => {
+  const storage = fakeStorage(signedIn);
+  const slept = [];
+  const fetchImpl = fakeFetch([
+    { status: 429, body: { success: false, message: 'Too many token refresh attempts, please sign in again' } },
+    { status: 200, body: { success: true, token: 'access.2', refreshToken: 'refresh.2', expiresIn: 900 } },
+  ]);
+  const { manager } = build({
+    storage,
+    fetch: fetchImpl,
+    sleep: async (ms) => slept.push(ms),
+  });
+
+  assert.equal(await manager.refreshTokens(), 'ok');
+  assert.deepEqual(slept, [1000]);
+  assert.equal(storage.dump().auth.refreshToken, 'refresh.2');
+});
+
+test('refreshTokens: sustained 429 gives up without signing the user out', async () => {
+  const storage = fakeStorage(signedIn);
+  const slept = [];
+  const fetchImpl = fakeFetch([{ status: 429, body: { success: false } }]);
+  const { manager } = build({
+    storage,
+    fetch: fetchImpl,
+    sleep: async (ms) => slept.push(ms),
+  });
+
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.equal(fetchImpl.calls.length, 4);
+  assert.deepEqual(slept, [1000, 2000, 4000]);
+
+  // The 30-day credential is still good; only the cooldown is recorded.
+  assert.equal(storage.dump().auth.refreshToken, 'refresh.1');
+  assert.equal(storage.dump().refreshCooldownUntil, 1_000_000 + 60_000);
+});
+
+test('refreshTokens: a live cooldown short-circuits without any request', async () => {
+  const storage = fakeStorage(
+    Object.assign({ refreshCooldownUntil: 1_000_001 }, signedIn),
+  );
+  const fetchImpl = fakeFetch([{ status: 200, body: {} }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.equal(fetchImpl.calls.length, 0, 'a fresh worker must not re-hammer a limited IP');
+});
+
+test('refreshTokens: an expired cooldown does not block', async () => {
+  const storage = fakeStorage(
+    Object.assign({ refreshCooldownUntil: 999_999 }, signedIn),
+  );
+  const fetchImpl = fakeFetch([
+    { status: 200, body: { success: true, token: 'access.2', refreshToken: 'refresh.2', expiresIn: 900 } },
+  ]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'ok');
+  assert.equal('refreshCooldownUntil' in storage.dump(), false);
+});
+
+test('refreshTokens: a long Retry-After is parked, not slept through', async () => {
+  const storage = fakeStorage(signedIn);
+  const slept = [];
+  const fetchImpl = fakeFetch([
+    { status: 429, body: { success: false }, headers: { 'Retry-After': '120' } },
+  ]);
+  const { manager } = build({
+    storage,
+    fetch: fetchImpl,
+    sleep: async (ms) => slept.push(ms),
+  });
+
+  // An MV3 worker will not live for two minutes, so the wait goes to storage.
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.deepEqual(slept, []);
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(storage.dump().refreshCooldownUntil, 1_000_000 + 120_000);
+  assert.equal(storage.dump().auth.refreshToken, 'refresh.1');
+});
+
+test('refreshTokens: a network failure backs off instead of signing out', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ throws: true }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  assert.equal(await manager.refreshTokens(), 'unavailable');
+  assert.equal(storage.dump().auth.refreshToken, 'refresh.1');
+});
