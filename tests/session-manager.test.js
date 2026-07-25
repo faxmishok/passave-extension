@@ -401,3 +401,150 @@ test('refreshTokens: an absurd Retry-After parks the 15-minute cap, not the raw 
   assert.equal(storage.dump().refreshCooldownUntil, 1_000_000 + 15 * 60 * 1000);
   assert.equal(storage.dump().auth.refreshToken, 'refresh.1');
 });
+
+test('apiFetch: sends the bearer token and returns the parsed body', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ status: 200, body: { success: true, saves: [{ _id: '1' }] } }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  const res = await manager.apiFetch('/save/all');
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.body.saves, [{ _id: '1' }]);
+
+  const call = fetchImpl.calls[0];
+  assert.equal(call.url, 'https://passave.org/api/v1/save/all');
+  assert.equal(call.init.headers.Authorization, 'Bearer access.1');
+  assert.equal(call.init.headers['X-Platform'], 'extension');
+  assert.equal(call.init.credentials, 'omit');
+});
+
+test('apiFetch: TOKEN_EXPIRED refreshes and retries exactly once', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([
+    { status: 401, body: { code: 'TOKEN_EXPIRED' } },
+    { status: 200, body: { success: true, token: 'access.2', refreshToken: 'refresh.2', expiresIn: 900 } },
+    { status: 200, body: { success: true, saves: [] } },
+  ]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  const res = await manager.apiFetch('/save/all');
+  assert.equal(res.ok, true);
+  assert.equal(fetchImpl.calls.length, 3);
+  assert.equal(fetchImpl.calls[1].url, 'https://passave.org/api/v1/auth/refresh');
+  // The retry must carry the NEW access token, not the one that just 401'd.
+  assert.equal(fetchImpl.calls[2].init.headers.Authorization, 'Bearer access.2');
+});
+
+test('apiFetch: a second 401 after refresh signs out instead of looping', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([
+    { status: 401, body: { code: 'TOKEN_EXPIRED' } },
+    { status: 200, body: { success: true, token: 'access.2', refreshToken: 'refresh.2', expiresIn: 900 } },
+    { status: 401, body: { code: 'TOKEN_EXPIRED' } },
+  ]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  const res = await manager.apiFetch('/save/all');
+  assert.equal(res.reason, 'signed_out');
+  assert.equal(fetchImpl.calls.length, 3, 'a fourth call would be the start of a refresh loop');
+  assert.equal('auth' in storage.dump(), false);
+});
+
+test('apiFetch: TOKEN_INVALID wipes without attempting a refresh', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ status: 401, body: { code: 'TOKEN_INVALID' } }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  const res = await manager.apiFetch('/save/all');
+  assert.equal(res.reason, 'signed_out');
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal('auth' in storage.dump(), false);
+});
+
+test('apiFetch: 403 INSUFFICIENT_PERMISSIONS keeps the user signed in', async () => {
+  const storage = fakeStorage(signedIn);
+  const { manager } = build({
+    storage,
+    fetch: fakeFetch([{ status: 403, body: { code: 'INSUFFICIENT_PERMISSIONS', message: 'Verify your email' } }]),
+  });
+
+  const res = await manager.apiFetch('/save/all');
+  assert.equal(res.reason, 'permission');
+  assert.equal(res.body.message, 'Verify your email');
+  assert.equal(storage.dump().auth.accessToken, 'access.1');
+});
+
+test('apiFetch: 429 keeps the user signed in', async () => {
+  const storage = fakeStorage(signedIn);
+  const { manager } = build({
+    storage,
+    fetch: fakeFetch([{ status: 429, body: { success: false } }]),
+  });
+
+  const res = await manager.apiFetch('/save/all');
+  assert.equal(res.reason, 'network_unavailable');
+  assert.equal(storage.dump().auth.accessToken, 'access.1');
+});
+
+test('apiFetch: an expired access token refreshes before spending a request', async () => {
+  const storage = fakeStorage({
+    auth: { accessToken: 'access.1', refreshToken: 'refresh.1', expiresAt: 999_999, legacy: false },
+  });
+  const fetchImpl = fakeFetch([
+    { status: 200, body: { success: true, token: 'access.2', refreshToken: 'refresh.2', expiresIn: 900 } },
+    { status: 200, body: { success: true, saves: [] } },
+  ]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  await manager.apiFetch('/save/all');
+  assert.equal(fetchImpl.calls.length, 2);
+  assert.equal(fetchImpl.calls[0].url, 'https://passave.org/api/v1/auth/refresh');
+});
+
+test('apiFetch: legacy mode 401s straight to signed out, no refresh call', async () => {
+  const storage = fakeStorage({ token: 'old.jwt.value' });
+  const fetchImpl = fakeFetch([{ status: 401, body: { code: 'TOKEN_EXPIRED' } }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  const res = await manager.apiFetch('/save/all');
+  assert.equal(res.reason, 'signed_out');
+  assert.equal(fetchImpl.calls.length, 1);
+  // The dead legacy token must not survive to fake a signed-in popup.
+  assert.equal('auth' in storage.dump(), false);
+});
+
+test('apiFetch: no stored session reports signed out without a request', async () => {
+  const fetchImpl = fakeFetch([{ status: 200, body: {} }]);
+  const { manager } = build({ fetch: fetchImpl });
+
+  const res = await manager.apiFetch('/save/all');
+  assert.equal(res.reason, 'signed_out');
+  assert.equal(fetchImpl.calls.length, 0);
+});
+
+test('apiFetch: a dead network is reported as network, not as a token failure', async () => {
+  const storage = fakeStorage(signedIn);
+  const { manager } = build({ storage, fetch: fakeFetch([{ throws: true }]) });
+
+  const res = await manager.apiFetch('/save/all');
+  assert.equal(res.reason, 'network');
+  assert.equal(storage.dump().auth.accessToken, 'access.1');
+});
+
+test('apiFetch: passes method and body through for writes', async () => {
+  const storage = fakeStorage(signedIn);
+  const fetchImpl = fakeFetch([{ status: 200, body: { success: true } }]);
+  const { manager } = build({ storage, fetch: fetchImpl });
+
+  await manager.apiFetch('/save/add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'GitHub' }),
+  });
+
+  const call = fetchImpl.calls[0];
+  assert.equal(call.init.method, 'POST');
+  assert.equal(call.init.headers['Content-Type'], 'application/json');
+  assert.equal(call.init.headers.Authorization, 'Bearer access.1');
+  assert.equal(JSON.parse(call.init.body).name, 'GitHub');
+});
