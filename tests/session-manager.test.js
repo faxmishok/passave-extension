@@ -725,6 +725,35 @@ test('login: stores the pair and derives a username', async () => {
   assert.equal(storage.dump().username, 'jane');
 });
 
+test('login: always sends an otp key, even when the caller omits it', async () => {
+  // The backend treats an ABSENT otp key as an opt-in to PassAuth push
+  // approval, and JSON.stringify drops undefined values — so an omitted otp
+  // would silently divert a paired account to a push the extension cannot
+  // complete. Assert on the serialized body, since that is where the key
+  // would disappear.
+  const fetchImpl = fakeFetch([
+    { status: 200, body: { success: true, token: 'a', refreshToken: 'r', expiresIn: 900 } },
+  ]);
+  const { manager } = build({ fetch: fetchImpl });
+
+  await manager.login({ email: 'jane@example.com', password: 'pw' });
+
+  const body = JSON.parse(fetchImpl.calls[0].init.body);
+  assert.ok('otp' in body, 'the otp key must survive serialization');
+  assert.equal(body.otp, '');
+});
+
+test('login: a non-string otp is coerced rather than dropped', async () => {
+  const fetchImpl = fakeFetch([
+    { status: 200, body: { success: true, token: 'a', refreshToken: 'r', expiresIn: 900 } },
+  ]);
+  const { manager } = build({ fetch: fetchImpl });
+
+  await manager.login({ email: 'jane@example.com', password: 'pw', otp: null });
+
+  assert.equal(JSON.parse(fetchImpl.calls[0].init.body).otp, '');
+});
+
 test('login: a pre-cutover backend yields a legacy session and no refresh loop', async () => {
   const storage = fakeStorage();
   const { manager } = build({
